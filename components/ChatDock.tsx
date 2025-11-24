@@ -114,8 +114,8 @@ export const ChatDock = () => {
         <>
             <div
                 className={`fixed bottom-6 right-6 z-50 flex w-full max-w-sm flex-col rounded-3xl border border-white/15 bg-slate-950/90 text-slate-100 shadow-[0_20px_70px_rgba(2,6,23,0.65)] backdrop-blur-2xl transition-all ${isOpen
-                        ? "pointer-events-auto opacity-100"
-                        : "pointer-events-none translate-y-6 opacity-0"
+                    ? "pointer-events-auto opacity-100"
+                    : "pointer-events-none translate-y-6 opacity-0"
                     }`}
             >
                 <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
@@ -146,8 +146,8 @@ export const ChatDock = () => {
                             </div>
                             <div
                                 className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user"
-                                        ? "bg-indigo-500/20 text-indigo-100"
-                                        : "bg-white/5 text-slate-100"
+                                    ? "bg-indigo-500/20 text-indigo-100"
+                                    : "bg-white/5 text-slate-100"
                                     }`}
                             >
                                 {message.content}
