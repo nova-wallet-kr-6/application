@@ -7,6 +7,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { CryptoTransfer } from "@/components/CryptoTransfer";
+import { ChatDock } from "@/components/ChatDock";
 
 const featureHighlights = [
   {
@@ -191,6 +192,7 @@ export default function Home() {
           </div>
         </section>
       </div>
+      <ChatDock />
     </main>
   );
 }
