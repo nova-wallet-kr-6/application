@@ -48,51 +48,54 @@ export const ChatDock = () => {
         appendMessage(userMessage);
         setInput("");
 
-        if (!isConnected || !address) {
-            appendMessage({
-                id: crypto.randomUUID(),
-                role: "assistant",
-                content:
-                    "Hubungkan wallet dulu ya sebelum aku bisa cek saldo kamu di chain aktif.",
-                timestamp: Date.now(),
-            });
-            return;
-        }
-
-        if (!/saldo|balance/i.test(userMessage.content)) {
-            appendMessage({
-                id: crypto.randomUUID(),
-                role: "assistant",
-                content:
-                    "Saat ini aku fokus bantu cek saldo. Tanyakan semisal “berapa saldo aku di Lisk Sepolia?”.",
-                timestamp: Date.now(),
-            });
-            return;
-        }
-
         try {
             setIsSending(true);
-            const response = await fetch("/api/wallet/balance", {
+
+            // Prepare messages untuk AI (exclude system message)
+            const aiMessages = messages
+                .filter((msg) => msg.role !== "system")
+                .map((msg) => ({
+                    role: msg.role,
+                    content: msg.content,
+                }));
+
+            // Tambahkan pesan user terbaru
+            aiMessages.push({
+                role: "user",
+                content: userMessage.content,
+            });
+
+            const response = await fetch("/api/ai/chat", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    address,
-                    chainId,
+                    messages: aiMessages,
+                    walletContext: isConnected && address
+                        ? {
+                            address,
+                            chainId,
+                            isConnected: true,
+                        }
+                        : {
+                            isConnected: false,
+                        },
                 }),
             });
 
             if (!response.ok) {
-                throw new Error("Gagal mengambil saldo");
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(
+                    errorData.error || "Gagal memproses chat",
+                );
             }
 
-            const { balanceEth, formattedChainName } = await response.json();
+            const { message } = await response.json();
             appendMessage({
                 id: crypto.randomUUID(),
                 role: "assistant",
-                content: `Saldo kamu saat ini ${balanceEth} ETH di ${formattedChainName}.${balance ? ` (UI wallet menunjukkan ${balance} ETH)` : ""
-                    }`,
+                content: message,
                 timestamp: Date.now(),
             });
         } catch (error) {
@@ -101,8 +104,8 @@ export const ChatDock = () => {
                 role: "assistant",
                 content:
                     error instanceof Error
-                        ? `Ada kendala: ${error.message}`
-                        : "Ada kendala saat memeriksa saldo.",
+                        ? `Maaf, ada kendala: ${error.message}`
+                        : "Maaf, ada kendala saat memproses pesan kamu.",
                 timestamp: Date.now(),
             });
         } finally {
@@ -162,21 +165,22 @@ export const ChatDock = () => {
                             className="flex-1 bg-transparent py-3 text-sm text-white placeholder:text-white/40 focus:outline-none"
                             placeholder={
                                 isConnected
-                                    ? "Contoh: Berapa saldo aku?"
-                                    : "Hubungkan wallet untuk cek saldo"
+                                    ? "Tanyakan apa saja tentang wallet kamu..."
+                                    : "Hubungkan wallet untuk mulai chat"
                             }
                             value={input}
                             onChange={(event) => setInput(event.target.value)}
                             onKeyDown={(event) => {
-                                if (event.key === "Enter") {
+                                if (event.key === "Enter" && !event.shiftKey) {
+                                    event.preventDefault();
                                     handleSend();
                                 }
                             }}
-                            disabled={!isConnected || isSending}
+                            disabled={isSending}
                         />
                         <button
                             onClick={handleSend}
-                            disabled={!isConnected || isSending || !input.trim()}
+                            disabled={isSending || !input.trim()}
                             className="rounded-2xl bg-indigo-500 p-2 text-white transition hover:bg-indigo-400 disabled:opacity-40"
                         >
                             <SendHorizonal className="h-4 w-4" />

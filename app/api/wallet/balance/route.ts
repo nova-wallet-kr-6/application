@@ -20,7 +20,9 @@ const chainMap: Record<number, Chain> = {
 
 const rpcOverride: Record<number, string | undefined> = {
   [liskSepolia.id]:
-    process.env.NEXT_PUBLIC_LISK_SEPOLIA_RPC ?? process.env.LISK_SEPOLIA_RPC,
+    process.env.NEXT_PUBLIC_LISK_SEPOLIA_RPC ??
+    process.env.LISK_SEPOLIA_RPC ??
+    "https://rpc.ankr.com/lisk_sepolia",
 };
 
 const getChain = (chainId: number) => chainMap[chainId];
@@ -52,19 +54,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const rpcUrl =
-      rpcOverride[chain.id] ?? chain.rpcUrls.default.http?.[0] ?? null;
-
-    if (!rpcUrl) {
-      return NextResponse.json(
-        { error: "Tidak menemukan RPC URL untuk chain ini." },
-        { status: 500 },
-      );
-    }
+    // Gunakan RPC override kalau ada, kalau tidak pakai default dari chain
+    const rpcUrl = rpcOverride[chain.id];
 
     const client = createPublicClient({
       chain,
-      transport: http(rpcUrl),
+      transport: rpcUrl ? http(rpcUrl) : http(), // Biarkan viem pilih default
     });
 
     const balanceWei = await client.getBalance({
@@ -90,4 +85,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
 
