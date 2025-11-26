@@ -21,7 +21,7 @@ import { WalletProvider } from '@/contexts/WalletContext';
 
 const config = getDefaultConfig({
     appName: 'My RainbowKit App',
-    projectId: 'YOUR_PROJECT_ID',
+    projectId: '1313a970a09fc15f2dbbeaf6be0821a3',
     chains: [mainnet, polygon, optimism, arbitrum, base, liskSepolia],
     ssr: true,
 });
