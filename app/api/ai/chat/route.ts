@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { parseIntent } from "@/lib/intentParser";
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -91,6 +92,24 @@ export async function POST(request: Request) {
             );
         }
 
+        const lastMessage = body.messages[body.messages.length - 1];
+        const parsedIntent = parseIntent(lastMessage.content);
+        const resolvedChainId =
+            body.walletContext?.chainId ??
+            parsedIntent.entities.chainId ??
+            4202; // default Lisk Sepolia
+
+        if (
+            parsedIntent.intent === "GET_BALANCE" &&
+            (!body.walletContext?.isConnected || !body.walletContext.address)
+        ) {
+            return NextResponse.json({
+                message:
+                    "Hubungkan wallet kamu dulu supaya aku bisa cek saldo di Lisk Sepolia.",
+                intent: parsedIntent,
+            });
+        }
+
         const model = genAI.getGenerativeModel({
             model: "gemini-2.0-flash",
             tools: [
@@ -105,8 +124,6 @@ export async function POST(request: Request) {
             role: msg.role === "user" ? "user" : "model",
             parts: [{ text: msg.content }],
         }));
-
-        const lastMessage = body.messages[body.messages.length - 1];
 
         // Build context untuk Gemini
         let contextMessage = SYSTEM_PROMPT;
@@ -124,6 +141,11 @@ Ketika user bertanya tentang saldo, gunakan function checkBalance dengan address
 
 Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih dahulu.`;
         }
+
+        contextMessage += `\n\nIntent Parser:
+- Intent: ${parsedIntent.intent}
+- Confidence: ${parsedIntent.confidence}
+- Chain target: ${resolvedChainId}`;
 
         // Start chat dengan history
         const chat = model.startChat({
@@ -156,12 +178,32 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
                 functionCalls.map(async (fnCall) => {
                     if (fnCall.name === "checkBalance") {
                         const { address, chainId } = fnCall.args as {
-                            address: string;
-                            chainId: number;
+                            address?: string;
+                            chainId?: number;
                         };
 
+                        const targetAddress =
+                            address ?? body.walletContext?.address;
+                        const targetChainId = chainId ?? resolvedChainId;
+
+                        if (!targetAddress) {
+                            return {
+                                functionResponse: {
+                                    name: "checkBalance",
+                                    response: {
+                                        success: false,
+                                        error:
+                                            "Alamat wallet tidak tersedia untuk pengecekan saldo.",
+                                    },
+                                },
+                            };
+                        }
+
                         try {
-                            const balanceData = await checkBalance(address, chainId);
+                            const balanceData = await checkBalance(
+                                targetAddress,
+                                targetChainId,
+                            );
                             return {
                                 functionResponse: {
                                     name: "checkBalance",
@@ -210,6 +252,7 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
 
         return NextResponse.json({
             message: text,
+            intent: parsedIntent,
         });
     } catch (error) {
         console.error("[ai/chat] error", error);

@@ -19,8 +19,8 @@ Nova Wallet adalah landing + proof-of-concept untuk agentic AI multi-wallet orch
    NEXT_PUBLIC_LISK_SEPOLIA_RPC=https://sepolia-rpc.lisk.com
    ```
 3. Jalankan dev server
-   ```bash
-   npm run dev
+```bash
+npm run dev
    ```
 4. Buka `http://localhost:3000`
 

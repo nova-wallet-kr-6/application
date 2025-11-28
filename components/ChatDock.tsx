@@ -91,7 +91,11 @@ export const ChatDock = () => {
                 );
             }
 
-            const { message } = await response.json();
+            const { message, intent } = await response.json();
+
+            if (intent) {
+                console.debug("[Nova AI] intent detected:", intent);
+            }
             appendMessage({
                 id: crypto.randomUUID(),
                 role: "assistant",
