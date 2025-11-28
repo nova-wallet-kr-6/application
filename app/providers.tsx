@@ -1,10 +1,11 @@
 "use client"
-import '@rainbow-me/rainbowkit/styles.css';
+"use client";
+import "@rainbow-me/rainbowkit/styles.css";
 import {
     getDefaultConfig,
     RainbowKitProvider,
-} from '@rainbow-me/rainbowkit';
-import { WagmiProvider } from 'wagmi';
+} from "@rainbow-me/rainbowkit";
+import { WagmiProvider } from "wagmi";
 import {
     mainnet,
     polygon,
@@ -12,16 +13,26 @@ import {
     arbitrum,
     base,
     liskSepolia,
-} from 'wagmi/chains';
+} from "wagmi/chains";
 import {
     QueryClientProvider,
     QueryClient,
 } from "@tanstack/react-query";
-import { WalletProvider } from '@/contexts/WalletContext';
+import { WalletProvider } from "@/contexts/WalletContext";
+
+const projectId =
+    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ??
+    process.env.WALLETCONNECT_PROJECT_ID;
+
+if (!projectId) {
+    throw new Error(
+        "WalletConnect projectId belum diset. Tambahkan NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID di .env.",
+    );
+}
 
 const config = getDefaultConfig({
-    appName: 'My RainbowKit App',
-    projectId: '1313a970a09fc15f2dbbeaf6be0821a3',
+    appName: "Nova Wallet",
+    projectId,
     chains: [mainnet, polygon, optimism, arbitrum, base, liskSepolia],
     ssr: true,
 });
@@ -33,9 +44,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <WagmiProvider config={config}>
             <QueryClientProvider client={queryClient}>
                 <RainbowKitProvider>
-                    <WalletProvider>
-                        {children}
-                    </WalletProvider>
+                    <WalletProvider>{children}</WalletProvider>
                 </RainbowKitProvider>
             </QueryClientProvider>
         </WagmiProvider>

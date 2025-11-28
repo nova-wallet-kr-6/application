@@ -1,37 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Nova Wallet Application
 
-## Getting Started
+Nova Wallet adalah landing + proof-of-concept untuk agentic AI multi-wallet orchestrator. Saat ini fokus pada:
 
-First, run the development server:
+- UI hero + demo transfer menggunakan Wagmi/RainbowKit.
+- Chat dock di pojok kanan bawah untuk percakapan dengan Nova AI.
+- Endpoint balance check yang membaca saldo wallet di Lisk Sepolia melalui RPC Blockscout.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Persiapan
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. Install dependencies
+   ```bash
+   npm install
+   ```
+2. Buat file `.env.local` di root dengan isi:
+   ```bash
+   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=xxxxxx
+   # optional override RPC
+   NEXT_PUBLIC_LISK_SEPOLIA_RPC=https://sepolia-rpc.lisk.com
+   ```
+3. Jalankan dev server
+   ```bash
+   npm run dev
+   ```
+4. Buka `http://localhost:3000`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Fitur Utama
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **CryptoTransfer** – connect wallet, lihat saldo, kirim transaksi dummy.
+- **ChatDock** – tombol floating yang membuka jendela chat. Pesan “berapa saldo aku?” akan men-trigger call ke `/api/wallet/balance`.
+- **Balance API** – berada di `app/api/wallet/balance/route.ts`, menerima `{ address, chainId }` dan mengembalikan saldo wei & ETH dari RPC Lisk Sepolia.
 
-## Learn More
+## Cara Menguji Alur AI Cek Saldo
 
-To learn more about Next.js, take a look at the following resources:
+1. Connect wallet ke jaringan Lisk Sepolia.
+2. Klik bubble chat → tanyakan “berapa saldo aku?”.
+3. Pastikan respons AI menampilkan saldo yang sama dengan card wallet (membandingkan data dari Wagmi vs RPC).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Catatan Lain
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# application
+- Redirect `/prd` → `/` diatur pada `next.config.ts`.
+- Provider RainbowKit menggunakan `projectId` dari env dan akan error jika belum diset (agar konfigurasi jelas).
