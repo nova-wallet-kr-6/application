@@ -11,6 +11,12 @@ type ChatMessage = {
     timestamp: number;
 };
 
+type TransferRequest = {
+    toAddress: string;
+    amount: string;
+    fromAddress: string;
+};
+
 const formatTimestamp = (timestamp: number) =>
     new Intl.DateTimeFormat("id-ID", {
         hour: "2-digit",
@@ -18,7 +24,7 @@ const formatTimestamp = (timestamp: number) =>
     }).format(timestamp);
 
 export const ChatDock = () => {
-    const { address, chainId, isConnected, balance } = useWallet();
+    const { address, chainId, isConnected, balance, refreshBalance } = useWallet();
     const [isOpen, setIsOpen] = useState(false);
     const [input, setInput] = useState("");
     const [isSending, setIsSending] = useState(false);
@@ -31,9 +37,76 @@ export const ChatDock = () => {
             timestamp: Date.now(),
         },
     ]);
+    const [pendingTransfer, setPendingTransfer] = useState<TransferRequest | null>(null);
+    const [isTransferring, setIsTransferring] = useState(false);
 
     const appendMessage = (message: ChatMessage) =>
         setMessages((prev) => [...prev, message]);
+
+    const handleApproveTransfer = async () => {
+        if (!pendingTransfer || !isConnected) return;
+
+        setIsTransferring(true);
+        try {
+            const ethereum = (window as { ethereum?: { request: (args: { method: string; params: unknown[] }) => Promise<string> } }).ethereum;
+            if (!ethereum) {
+                throw new Error("MetaMask tidak terdeteksi");
+            }
+
+            // Convert amount to Wei (1 ETH = 10^18 Wei)
+            const amountInWei = BigInt(Math.floor(parseFloat(pendingTransfer.amount) * 1e18));
+            const amountHex = "0x" + amountInWei.toString(16);
+
+            // Kirim transaksi
+            const txHash = await ethereum.request({
+                method: "eth_sendTransaction",
+                params: [
+                    {
+                        from: pendingTransfer.fromAddress,
+                        to: pendingTransfer.toAddress,
+                        value: amountHex,
+                    },
+                ],
+            });
+
+            appendMessage({
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: `✅ Transfer berhasil!\n\nTx Hash: ${txHash}\n\nTransaksi sedang diproses di blockchain. Saldo akan diperbarui setelah transaksi dikonfirmasi.`,
+                timestamp: Date.now(),
+            });
+
+            // Reset pending transfer
+            setPendingTransfer(null);
+
+            // Refresh balance setelah beberapa detik
+            setTimeout(() => {
+                refreshBalance();
+            }, 3000);
+        } catch (error) {
+            appendMessage({
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content:
+                    error instanceof Error
+                        ? `❌ Transfer gagal: ${error.message}`
+                        : "❌ Transfer gagal. Silakan coba lagi.",
+                timestamp: Date.now(),
+            });
+        } finally {
+            setIsTransferring(false);
+        }
+    };
+
+    const handleCancelTransfer = () => {
+        setPendingTransfer(null);
+        appendMessage({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: "Transfer dibatalkan. Ada yang bisa aku bantu lagi?",
+            timestamp: Date.now(),
+        });
+    };
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -91,13 +164,18 @@ export const ChatDock = () => {
                 );
             }
 
-            const { message } = await response.json();
+            const { message, transferRequest } = await response.json();
             appendMessage({
                 id: crypto.randomUUID(),
                 role: "assistant",
                 content: message,
                 timestamp: Date.now(),
             });
+
+            // Jika ada transfer request, tampilkan approval dialog
+            if (transferRequest) {
+                setPendingTransfer(transferRequest);
+            }
         } catch (error) {
             appendMessage({
                 id: crypto.randomUUID(),
@@ -196,6 +274,55 @@ export const ChatDock = () => {
             >
                 <MessageCircle className="h-6 w-6" />
             </button>
+
+            {/* Transfer Approval Dialog */}
+            {pendingTransfer && (
+                <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="mx-4 w-full max-w-md rounded-3xl border border-white/15 bg-slate-950 p-6 shadow-2xl">
+                        <h3 className="mb-4 text-lg font-semibold text-white">
+                            Konfirmasi Transfer
+                        </h3>
+
+                        <div className="mb-6 space-y-3 rounded-2xl bg-white/5 p-4">
+                            <div>
+                                <p className="text-xs text-slate-400">Dari</p>
+                                <p className="font-mono text-sm text-white break-all">
+                                    {pendingTransfer.fromAddress}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-400">Ke</p>
+                                <p className="font-mono text-sm text-white break-all">
+                                    {pendingTransfer.toAddress}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-slate-400">Jumlah</p>
+                                <p className="text-2xl font-bold text-indigo-400">
+                                    {pendingTransfer.amount} ETH
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleCancelTransfer}
+                                disabled={isTransferring}
+                                className="flex-1 rounded-xl bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                onClick={handleApproveTransfer}
+                                disabled={isTransferring}
+                                className="flex-1 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-50"
+                            >
+                                {isTransferring ? "Memproses..." : "Approve & Kirim"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 };

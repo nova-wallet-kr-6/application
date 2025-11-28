@@ -50,15 +50,19 @@ const SYSTEM_PROMPT = `Kamu adalah Nova AI, asisten crypto wallet yang ramah dan
 
 Tugas kamu:
 1. Bantu user cek saldo wallet mereka dengan memanggil function checkBalance ketika user bertanya tentang saldo
-2. Jelaskan informasi crypto dengan bahasa sederhana
-3. Validasi transaksi sebelum execute (jangan pernah execute tanpa konfirmasi user)
+2. Bantu user transfer token dengan memanggil function prepareTransfer ketika user ingin mengirim/transfer ETH
+3. Jelaskan informasi crypto dengan bahasa sederhana
+4. Validasi transaksi sebelum execute (jangan pernah execute tanpa konfirmasi user)
 
 Ingat:
 - Selalu gunakan Bahasa Indonesia
 - Jelaskan dengan bahasa yang mudah dipahami
 - Ketika user bertanya tentang saldo, gunakan function checkBalance
+- Ketika user ingin transfer/kirim ETH, gunakan function prepareTransfer dengan detail yang jelas
+- Function prepareTransfer akan meminta approval dari user sebelum transaksi dijalankan
 - Jangan pernah execute transaksi tanpa konfirmasi eksplisit dari user
-- Kalau user belum connect wallet, ingatkan mereka untuk connect dulu`;
+- Kalau user belum connect wallet, ingatkan mereka untuk connect dulu
+- Pastikan alamat tujuan transfer adalah alamat Ethereum yang valid (format 0x...)`;
 
 // Function schema untuk Gemini
 const checkBalanceFunction = {
@@ -80,6 +84,29 @@ const checkBalanceFunction = {
     },
 };
 
+const prepareTransferFunction = {
+    name: "prepareTransfer",
+    description: "Persiapkan transfer token ETH ke alamat lain. Function ini akan meminta approval dari user sebelum transaksi dijalankan.",
+    parameters: {
+        type: SchemaType.OBJECT,
+        properties: {
+            toAddress: {
+                type: SchemaType.STRING as const,
+                description: "Alamat tujuan transfer (harus format address Ethereum yang valid, contoh: 0x...)",
+            },
+            amount: {
+                type: SchemaType.STRING as const,
+                description: "Jumlah ETH yang akan ditransfer (dalam format string, contoh: '0.1')",
+            },
+            fromAddress: {
+                type: SchemaType.STRING as const,
+                description: "Alamat wallet pengirim",
+            },
+        },
+        required: ["toAddress", "amount", "fromAddress"],
+    },
+};
+
 export async function POST(request: Request) {
     try {
         const body = (await request.json()) as ChatRequestBody;
@@ -95,7 +122,7 @@ export async function POST(request: Request) {
             model: "gemini-2.0-flash",
             tools: [
                 {
-                    functionDeclarations: [checkBalanceFunction as any],
+                    functionDeclarations: [checkBalanceFunction, prepareTransferFunction],
                 },
             ],
         });
@@ -150,6 +177,8 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
 
         // Handle function calls (loop sampai tidak ada function call lagi)
         let functionCalls = response.functionCalls();
+        let transferRequest = null;
+
         while (functionCalls && functionCalls.length > 0) {
             // Execute functions
             const functionResults = await Promise.all(
@@ -190,6 +219,61 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
                         }
                     }
 
+                    if (fnCall.name === "prepareTransfer") {
+                        const { toAddress, amount, fromAddress } = fnCall.args as {
+                            toAddress: string;
+                            amount: string;
+                            fromAddress: string;
+                        };
+
+                        // Validasi address format
+                        if (!toAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+                            return {
+                                functionResponse: {
+                                    name: "prepareTransfer",
+                                    response: {
+                                        success: false,
+                                        error: "Alamat tujuan tidak valid. Harus format Ethereum address (0x...)",
+                                    },
+                                },
+                            };
+                        }
+
+                        // Validasi amount
+                        const amountNum = parseFloat(amount);
+                        if (isNaN(amountNum) || amountNum <= 0) {
+                            return {
+                                functionResponse: {
+                                    name: "prepareTransfer",
+                                    response: {
+                                        success: false,
+                                        error: "Jumlah transfer harus lebih dari 0",
+                                    },
+                                },
+                            };
+                        }
+
+                        // Simpan transfer request untuk dikembalikan ke client
+                        transferRequest = {
+                            toAddress,
+                            amount,
+                            fromAddress,
+                        };
+
+                        return {
+                            functionResponse: {
+                                name: "prepareTransfer",
+                                response: {
+                                    success: true,
+                                    message: "Transfer siap diproses. Menunggu approval dari user.",
+                                    toAddress,
+                                    amount,
+                                    fromAddress,
+                                },
+                            },
+                        };
+                    }
+
                     return {
                         functionResponse: {
                             name: fnCall.name,
@@ -210,6 +294,7 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
 
         return NextResponse.json({
             message: text,
+            transferRequest: transferRequest || undefined,
         });
     } catch (error) {
         console.error("[ai/chat] error", error);
