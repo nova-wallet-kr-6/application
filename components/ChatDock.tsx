@@ -76,6 +76,7 @@ export const ChatDock = () => {
                         ? {
                             address,
                             chainId,
+                            balance,
                             isConnected: true,
                         }
                         : {

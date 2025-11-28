@@ -43,6 +43,7 @@ type ChatRequestBody = {
     walletContext?: {
         address: string;
         chainId: number;
+        balance?: string; // Balance dari UI (WalletContext)
         isConnected: boolean;
     };
 };
@@ -58,6 +59,10 @@ Ingat:
 - Selalu gunakan Bahasa Indonesia
 - Jelaskan dengan bahasa yang mudah dipahami
 - Ketika user bertanya tentang saldo, gunakan function checkBalance
+- Function checkBalance akan mengembalikan data saldo dari blockchain + comparison dengan UI
+- Jika ada field "comparison" di response checkBalance:
+  * Kalau "matches: false" dan ada "reason", jelaskan ke user kenapa berbeda (misalnya chain berbeda, atau perbedaan kecil karena timing refresh)
+  * Kalau "matches: true", cukup kasih tahu saldo tanpa perlu mention comparison
 - Jangan pernah execute transaksi tanpa konfirmasi eksplisit dari user
 - Kalau user belum connect wallet, ingatkan mereka untuk connect dulu`;
 
@@ -129,12 +134,16 @@ export async function POST(request: Request) {
         let contextMessage = SYSTEM_PROMPT;
 
         if (body.walletContext?.isConnected) {
+            const balanceInfo = body.walletContext.balance
+                ? `- Balance UI: ${body.walletContext.balance} ETH (dari WalletContext, bisa jadi berbeda dengan data real-time dari blockchain)`
+                : "";
             contextMessage += `\n\nKonteks Wallet Saat Ini:
 - Address: ${body.walletContext.address}
 - Chain ID: ${body.walletContext.chainId}
+${balanceInfo}
 - Status: Terhubung
 
-Ketika user bertanya tentang saldo, gunakan function checkBalance dengan address dan chainId di atas.`;
+Ketika user bertanya tentang saldo, gunakan function checkBalance dengan address dan chainId di atas. Function akan mengembalikan saldo real-time dari blockchain + comparison dengan balance UI jika tersedia.`;
         } else {
             contextMessage += `\n\nKonteks Wallet Saat Ini:
 - Status: Belum terhubung (user perlu connect wallet dulu)
@@ -204,6 +213,47 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
                                 targetAddress,
                                 targetChainId,
                             );
+
+                            // Compare dengan balance dari UI (WalletContext)
+                            const uiBalance = body.walletContext?.balance;
+                            const uiChainId = body.walletContext?.chainId;
+                            let balanceComparison: {
+                                uiBalance?: string;
+                                uiChainId?: number;
+                                matches: boolean;
+                                reason?: string;
+                            } = {
+                                matches: false,
+                            };
+
+                            if (uiBalance && uiChainId) {
+                                const apiBalanceNum = parseFloat(balanceData.balanceEth);
+                                const uiBalanceNum = parseFloat(uiBalance);
+                                const tolerance = 0.000001; // Tolerance untuk floating point
+
+                                if (targetChainId === uiChainId) {
+                                    // Same chain - compare values
+                                    const diff = Math.abs(apiBalanceNum - uiBalanceNum);
+                                    balanceComparison = {
+                                        uiBalance,
+                                        uiChainId,
+                                        matches: diff < tolerance,
+                                        reason:
+                                            diff >= tolerance
+                                                ? `UI menunjukkan ${uiBalance} ETH, API menunjukkan ${balanceData.balanceEth} ETH. Perbedaan kecil ini normal karena timing refresh atau rounding.`
+                                                : undefined,
+                                    };
+                                } else {
+                                    // Different chain - explain
+                                    balanceComparison = {
+                                        uiBalance,
+                                        uiChainId,
+                                        matches: false,
+                                        reason: `UI menunjukkan saldo di chain ${uiChainId}, tapi kamu minta cek saldo di chain ${targetChainId} (${balanceData.formattedChainName}). Ini adalah saldo di chain yang berbeda.`,
+                                    };
+                                }
+                            }
+
                             return {
                                 functionResponse: {
                                     name: "checkBalance",
@@ -212,7 +262,9 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
                                         balanceEth: balanceData.balanceEth,
                                         balanceWei: balanceData.balanceWei,
                                         chainName: balanceData.formattedChainName,
+                                        chainId: targetChainId,
                                         address: balanceData.address,
+                                        comparison: balanceComparison,
                                     },
                                 },
                             };

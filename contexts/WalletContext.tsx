@@ -42,45 +42,50 @@ export const WalletProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [balanceUpdated, setBalanceUpdated] = useState(false);
     const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
-    const getEthereumProvider = useCallback(() => {
-        const { ethereum } = window;
-        if (!ethereum) {
-            throw new Error('No ethereum provider');
-        }
-        return ethereum;
-    }, []);
-
-    const fetchBalance = useCallback(async (account: string) => {
+    const fetchBalance = useCallback(async (account: string, currentChainId: number) => {
         try {
             setIsLoadingBalance(true);
-            const ethereum = getEthereumProvider();
-            const balanceHex = await ethereum.request<string>({
-                method: 'eth_getBalance',
-                params: [account, 'latest'],
+            
+            // Pakai backend API yang sudah support multi-chain
+            const response = await fetch('/api/wallet/balance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    address: account,
+                    chainId: currentChainId,
+                }),
             });
-            const balanceWei = parseInt(balanceHex, 16);
-            const balanceEth = (balanceWei / 1e18).toFixed(6);
-            setBalance(balanceEth);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Gagal mengambil saldo');
+            }
+
+            const data = await response.json();
+            setBalance(data.balanceEth);
             setBalanceUpdated(true);
         } catch (err: unknown) {
             console.error('Failed to fetch balance:', getErrorMessage(err));
             setBalance('0');
+            setBalanceUpdated(false);
         } finally {
             setIsLoadingBalance(false);
         }
-    }, [getEthereumProvider]);
+    }, []);
 
     const refreshBalance = useCallback(async () => {
-        if (address) {
+        if (address && chainId) {
             setBalanceUpdated(false);
-            await fetchBalance(address);
+            await fetchBalance(address, chainId);
         }
-    }, [address, fetchBalance]);
+    }, [address, chainId, fetchBalance]);
 
     useEffect(() => {
-        if (isConnected && address) {
+        if (isConnected && address && chainId) {
             setBalanceUpdated(false);
-            fetchBalance(address);
+            fetchBalance(address, chainId);
         } else {
             setBalance('0');
             setBalanceUpdated(false);

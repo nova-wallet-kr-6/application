@@ -77,13 +77,18 @@ export async function POST(request: Request) {
 
     if (!chain) {
       return NextResponse.json(
-        { error: `Chain ${body.chainId} belum didukung.` },
+        { 
+          error: `Chain ${body.chainId} belum didukung.`,
+          supportedChains: supportedChains.map(c => ({ id: c.id, name: c.name }))
+        },
         { status: 400 },
       );
     }
 
     // Gunakan RPC override kalau ada, kalau tidak pakai default dari chain
     const rpcUrl = rpcOverride[chain.id];
+
+    console.log(`[wallet/balance] Checking balance for chain ${chain.id} (${chain.name}), RPC: ${rpcUrl || 'default'}`);
 
     const client = createPublicClient({
       chain,
