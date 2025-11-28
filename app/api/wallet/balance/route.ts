@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     if (!chain) {
       return NextResponse.json(
-        { 
+        {
           error: `Chain ${body.chainId} belum didukung.`,
           supportedChains: supportedChains.map(c => ({ id: c.id, name: c.name }))
         },
@@ -103,8 +103,8 @@ export async function POST(request: Request) {
 
     // Determine token symbol based on chain
     const tokenSymbol = chain.id === liskSepolia.id ? "LSK" : "ETH";
-    const tokenName = chain.id === liskSepolia.id 
-      ? "LSK (Lisk native token)" 
+    const tokenName = chain.id === liskSepolia.id
+      ? "LSK (Lisk native token)"
       : "ETH (Ethereum native token)";
 
     return NextResponse.json({
