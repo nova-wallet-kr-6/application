@@ -7,22 +7,50 @@ import {
   type Hex,
 } from "viem";
 import type { Chain } from "viem/chains";
-import { liskSepolia } from "viem/chains";
+import {
+  arbitrum,
+  base,
+  mainnet,
+  optimism,
+  polygon,
+  liskSepolia,
+} from "viem/chains";
 
 type BalanceRequestBody = {
   address: Hex;
   chainId: number;
 };
 
-const chainMap: Record<number, Chain> = {
-  [liskSepolia.id]: liskSepolia,
-};
+const supportedChains: Chain[] = [
+  mainnet,
+  polygon,
+  optimism,
+  arbitrum,
+  base,
+  liskSepolia,
+];
+
+const chainMap: Record<number, Chain> = supportedChains.reduce(
+  (acc, chain) => {
+    acc[chain.id] = chain;
+    return acc;
+  },
+  {} as Record<number, Chain>,
+);
 
 const rpcOverride: Record<number, string | undefined> = {
+  [mainnet.id]:
+    process.env.NEXT_PUBLIC_MAINNET_RPC ?? process.env.MAINNET_RPC,
+  [polygon.id]:
+    process.env.NEXT_PUBLIC_POLYGON_RPC ?? process.env.POLYGON_RPC,
+  [optimism.id]:
+    process.env.NEXT_PUBLIC_OPTIMISM_RPC ?? process.env.OPTIMISM_RPC,
+  [arbitrum.id]:
+    process.env.NEXT_PUBLIC_ARBITRUM_RPC ?? process.env.ARBITRUM_RPC,
+  [base.id]: process.env.NEXT_PUBLIC_BASE_RPC ?? process.env.BASE_RPC,
   [liskSepolia.id]:
     process.env.NEXT_PUBLIC_LISK_SEPOLIA_RPC ??
-    process.env.LISK_SEPOLIA_RPC ??
-    "https://rpc.ankr.com/lisk_sepolia",
+    process.env.LISK_SEPOLIA_RPC,
 };
 
 const getChain = (chainId: number) => chainMap[chainId];
