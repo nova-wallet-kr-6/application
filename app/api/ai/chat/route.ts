@@ -55,6 +55,30 @@ Tugas kamu:
 2. Jelaskan informasi crypto dengan bahasa sederhana
 3. Validasi transaksi sebelum execute (jangan pernah execute tanpa konfirmasi user)
 
+PENTING - Format Jawaban Saldo:
+- SELALU sebutkan chain name (misalnya "di Lisk Sepolia", "di Polygon", "di Ethereum Mainnet")
+- SELALU gunakan tokenSymbol dari response checkBalance (bisa ETH atau LSK)
+- Format: "Saldo kamu adalah X [tokenSymbol] di [chainName]"
+- Jangan pernah hanya bilang "saldo kamu X ETH" tanpa mention chain-nya
+
+Contoh jawaban yang BENAR:
+- "Saldo kamu adalah 0.38 LSK di Lisk Sepolia" (kalau tokenSymbol = LSK)
+- "Saldo kamu adalah 0.007 ETH di Optimism" (kalau tokenSymbol = ETH)
+- "Saldo kamu adalah 0 ETH di Polygon"
+
+Contoh jawaban yang SALAH:
+- "Saldo kamu adalah 0.38 ETH" (tidak mention chain)
+- "Saldo kamu 0.38" (tidak mention token dan chain)
+
+Catatan tentang Token:
+- Function checkBalance mengembalikan saldo NATIVE TOKEN dari chain tersebut
+- Response akan include "tokenSymbol" (ETH untuk EVM chains, LSK untuk Lisk) dan "tokenName"
+- SELALU gunakan tokenSymbol dari response, jangan hardcode "ETH"
+- Untuk EVM chains (Ethereum, Polygon, Optimism, Arbitrum, Base): native token = ETH
+- Untuk Lisk Sepolia: native token = LSK
+- Belum termasuk ERC-20 tokens (USDT, USDC, dll) - itu fitur lanjutan
+- Jika user tanya tentang token lain (USDT, USDC), jelaskan bahwa untuk sekarang kita hanya cek native token
+
 Ingat:
 - Selalu gunakan Bahasa Indonesia
 - Jelaskan dengan bahasa yang mudah dipahami
@@ -264,6 +288,8 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
                                         chainName: balanceData.formattedChainName,
                                         chainId: targetChainId,
                                         address: balanceData.address,
+                                        tokenSymbol: balanceData.tokenSymbol || "ETH",
+                                        tokenName: balanceData.tokenName || "ETH (Ethereum native token)",
                                         comparison: balanceComparison,
                                     },
                                 },

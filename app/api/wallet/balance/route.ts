@@ -101,12 +101,20 @@ export async function POST(request: Request) {
 
     const balanceEth = formatEther(balanceWei);
 
+    // Determine token symbol based on chain
+    const tokenSymbol = chain.id === liskSepolia.id ? "LSK" : "ETH";
+    const tokenName = chain.id === liskSepolia.id 
+      ? "LSK (Lisk native token)" 
+      : "ETH (Ethereum native token)";
+
     return NextResponse.json({
       address: body.address,
       chainId: chain.id,
       formattedChainName: chain.name,
       balanceWei: balanceWei.toString(),
-      balanceEth,
+      balanceEth, // Tetap pakai format ETH untuk kompatibilitas
+      tokenSymbol, // Symbol yang benar (ETH atau LSK)
+      tokenName, // Nama lengkap token
     });
   } catch (error) {
     console.error("[wallet/balance] error", error);
