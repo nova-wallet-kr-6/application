@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { parseIntent } from "@/lib/intentParser";
+import { isAddress as viemIsAddress } from "viem";
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -110,6 +111,100 @@ const checkBalanceFunction = {
     },
 };
 
+interface PrepareSendParams {
+    fromAddress: string;
+    toAddress: string;
+    amount: number;
+    chainId: number;
+}
+
+const GAS_LIMIT = 21000;
+const DEFAULT_GAS_PRICE_GWEI = 10;
+
+const isValidAddress = (address: string) =>
+    viemIsAddress(address as `0x${string}`);
+
+const formatNumber = (value: number) =>
+    Number.isFinite(value) ? value.toFixed(6) : "0";
+
+const estimateGasCost = (gasPriceGwei = DEFAULT_GAS_PRICE_GWEI) => {
+    const gasPriceEth = gasPriceGwei / 1e9;
+    return gasPriceEth * GAS_LIMIT;
+};
+
+const prepareSendTransaction = async ({
+    fromAddress,
+    toAddress,
+    amount,
+    chainId,
+}: PrepareSendParams) => {
+    const issues: string[] = [];
+
+    if (!isValidAddress(toAddress)) {
+        issues.push("Alamat tujuan tidak valid. Pastikan formatnya 0x...");
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+        issues.push("Jumlah yang ingin dikirim harus lebih besar dari 0.");
+    }
+
+    const balanceData = await checkBalance(fromAddress, chainId);
+    const tokenSymbol = balanceData.tokenSymbol || "ETH";
+    const chainName = balanceData.formattedChainName;
+    const chainIdResolved = balanceData.chainId || chainId;
+    const balanceValue = parseFloat(balanceData.balanceEth);
+    const hasBalance = Number.isFinite(balanceValue)
+        ? balanceValue >= amount
+        : false;
+
+    if (!hasBalance) {
+        issues.push(
+            `Saldo kamu di ${chainName} hanya ${balanceData.balanceEth} ${tokenSymbol}.`,
+        );
+    }
+
+    const gasEstimateEth = estimateGasCost();
+    const totalEstimate = amount + gasEstimateEth;
+
+    return {
+        success: issues.length === 0,
+        preview: {
+            fromAddress,
+            toAddress,
+            amount,
+            amountFormatted: `${formatNumber(amount)} ${tokenSymbol}`,
+            tokenSymbol,
+            chainId: chainIdResolved,
+            chainName,
+            gasEstimate: `${formatNumber(gasEstimateEth)} ${tokenSymbol}`,
+            totalEstimate: `${formatNumber(totalEstimate)} ${tokenSymbol}`,
+        },
+        validations: {
+            hasBalance,
+            issues,
+        },
+    };
+};
+
+const buildSendMessage = (
+    preview: Awaited<ReturnType<typeof prepareSendTransaction>>,
+) => {
+    const { amountFormatted, chainName, toAddress } = preview.preview;
+    let message = `Kamu ingin mengirim ${amountFormatted} ke ${toAddress} di ${chainName}.`;
+    message += `\nPerkiraan gas fee: ${preview.preview.gasEstimate}.`;
+    message += `\nPerkiraan total: ${preview.preview.totalEstimate}.`;
+
+    if (preview.validations.issues.length) {
+        message += `\n\nNamun ada beberapa catatan:\n- ${preview.validations.issues.join(
+            "\n- ",
+        )}`;
+        message += `\nPerbaiki hal di atas sebelum melanjutkan.`;
+    } else {
+        message += `\n\nJika kamu setuju, klik tombol konfirmasi untuk mengirim transaksi. Kamu tetap akan diminta menyetujui di wallet.`;
+    }
+    return message;
+};
+
 export async function POST(request: Request) {
     try {
         const body = (await request.json()) as ChatRequestBody;
@@ -136,6 +231,50 @@ export async function POST(request: Request) {
                 message:
                     "Hubungkan wallet kamu dulu supaya aku bisa cek saldo di Lisk Sepolia.",
                 intent: parsedIntent,
+            });
+        }
+
+        if (parsedIntent.intent === "SEND") {
+            if (!body.walletContext?.isConnected || !body.walletContext.address) {
+                return NextResponse.json({
+                    message:
+                        "Hubungkan wallet kamu dulu sebelum mengirim token.",
+                    intent: parsedIntent,
+                });
+            }
+
+            const amount = parsedIntent.entities.amount;
+            const toAddress = parsedIntent.entities.toAddress;
+
+            if (!amount) {
+                return NextResponse.json({
+                    message:
+                        "Aku perlu tahu jumlah yang ingin kamu kirim. Sebutkan jumlahnya, misalnya \"kirim 0.1 ETH\".",
+                    intent: parsedIntent,
+                });
+            }
+
+            if (!toAddress) {
+                return NextResponse.json({
+                    message:
+                        "Aku belum tahu alamat tujuan. Mohon berikan alamat wallet penerima (format 0x...).",
+                    intent: parsedIntent,
+                });
+            }
+
+            const preview = await prepareSendTransaction({
+                fromAddress: body.walletContext.address,
+                toAddress,
+                amount,
+                chainId: resolvedChainId,
+            });
+
+            const message = buildSendMessage(preview);
+
+            return NextResponse.json({
+                message,
+                intent: parsedIntent,
+                transactionPreview: preview,
             });
         }
 

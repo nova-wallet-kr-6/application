@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { MessageCircle, SendHorizonal, X } from "lucide-react";
+import { parseEther } from "viem";
+import { useSendTransaction } from "wagmi";
 import { useWallet } from "@/contexts/WalletContext";
+import {
+    TransactionConfirmModal,
+    TransactionPreviewData,
+} from "./TransactionConfirmModal";
 
 type ChatMessage = {
     id: string;
@@ -18,7 +24,8 @@ const formatTimestamp = (timestamp: number) =>
     }).format(timestamp);
 
 export const ChatDock = () => {
-    const { address, chainId, isConnected, balance } = useWallet();
+    const { address, chainId, isConnected, balance, refreshBalance } = useWallet();
+    const { sendTransactionAsync } = useSendTransaction();
     const [isOpen, setIsOpen] = useState(false);
     const [input, setInput] = useState("");
     const [isSending, setIsSending] = useState(false);
@@ -31,6 +38,11 @@ export const ChatDock = () => {
             timestamp: Date.now(),
         },
     ]);
+    const [pendingPreview, setPendingPreview] =
+        useState<TransactionPreviewData | null>(null);
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [isTxProcessing, setIsTxProcessing] = useState(false);
+    const [txModalError, setTxModalError] = useState("");
 
     const appendMessage = (message: ChatMessage) =>
         setMessages((prev) => [...prev, message]);
@@ -92,7 +104,15 @@ export const ChatDock = () => {
                 );
             }
 
-            const { message, intent } = await response.json();
+            const { message, intent, transactionPreview } = await response.json();
+
+            if (transactionPreview) {
+                setPendingPreview(transactionPreview);
+                if (transactionPreview.success) {
+                    setTxModalError("");
+                    setIsConfirmOpen(true);
+                }
+            }
 
             if (intent) {
                 console.debug("[Nova AI] intent detected:", intent);
@@ -115,6 +135,74 @@ export const ChatDock = () => {
             });
         } finally {
             setIsSending(false);
+        }
+    };
+
+    const handleCancelTransaction = () => {
+        setIsConfirmOpen(false);
+        setPendingPreview(null);
+        setTxModalError("");
+    };
+
+    const handleConfirmTransaction = async () => {
+        if (!pendingPreview || !pendingPreview.success) {
+            return;
+        }
+
+        if (!isConnected || !address) {
+            setTxModalError("Wallet belum terhubung.");
+            return;
+        }
+
+        if (chainId !== pendingPreview.preview.chainId) {
+            setTxModalError(
+                `Switch chain kamu ke ${pendingPreview.preview.chainName} sebelum mengirim.`,
+            );
+            return;
+        }
+
+        try {
+            setIsTxProcessing(true);
+            setTxModalError("");
+
+            // Gunakan toFixed(18) untuk menghindari notasi ilmiah (e-17) dan masalah locale (koma vs titik)
+            const amountStr = pendingPreview.preview.amount.toFixed(18);
+            console.log("[ChatDock] Sending transaction:", {
+                amountOriginal: pendingPreview.preview.amount,
+                amountStr,
+                to: pendingPreview.preview.toAddress
+            });
+
+            const valueWei = parseEther(amountStr);
+
+            const txHash = await sendTransactionAsync({
+                to: pendingPreview.preview.toAddress as `0x${string}`,
+                value: valueWei,
+            });
+
+            appendMessage({
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: `✅ Transaksi dikirim! Hash: ${txHash}`,
+                timestamp: Date.now(),
+            });
+
+            setIsConfirmOpen(false);
+            setPendingPreview(null);
+            await refreshBalance();
+        } catch (error) {
+            console.error("[ChatDock] Transaction error:", error);
+            // Tampilkan error asli jika ada message-nya
+            const errorMessage = error instanceof Error ? error.message : String(error);
+
+            // Handle user rejection khusus
+            if (errorMessage.toLowerCase().includes("user rejected")) {
+                setTxModalError("Transaksi dibatalkan oleh user di wallet.");
+            } else {
+                setTxModalError(`Gagal mengirim transaksi: ${errorMessage}`);
+            }
+        } finally {
+            setIsTxProcessing(false);
         }
     };
 
@@ -201,6 +289,15 @@ export const ChatDock = () => {
             >
                 <MessageCircle className="h-6 w-6" />
             </button>
+
+            <TransactionConfirmModal
+                open={isConfirmOpen}
+                preview={pendingPreview}
+                onConfirm={handleConfirmTransaction}
+                onCancel={handleCancelTransaction}
+                isProcessing={isTxProcessing}
+                error={txModalError}
+            />
         </>
     );
 };

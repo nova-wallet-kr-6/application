@@ -78,6 +78,10 @@ export const parseIntent = (message: string): ParsedIntent => {
     } else if (/kirim|send|transfer/i.test(lowerMessage)) {
         intent = "SEND";
         confidence = 0.9;
+    } else if (toAddress && amount) {
+        // Implicit SEND intent: if message contains amount and address
+        intent = "SEND";
+        confidence = 0.8;
     } else if (/swap|tukar|convert/i.test(lowerMessage)) {
         intent = "SWAP";
         confidence = 0.7;
