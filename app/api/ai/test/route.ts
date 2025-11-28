@@ -1,19 +1,25 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  throw new Error("GEMINI_API_KEY belum diset");
-}
-
 export async function GET() {
   try {
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "GEMINI_API_KEY belum diset",
+        },
+        { status: 500 },
+      );
+    }
+
     const genAI = new GoogleGenerativeAI(apiKey);
-    
+
     // Test dengan model yang benar
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.0-flash" 
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash"
     });
 
     const result = await model.generateContent("Say hello in Indonesian");
@@ -32,8 +38,6 @@ export async function GET() {
       {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
-        apiKeyExists: !!apiKey,
-        apiKeyPrefix: apiKey ? apiKey.substring(0, 10) + "..." : "none",
       },
       { status: 500 },
     );
