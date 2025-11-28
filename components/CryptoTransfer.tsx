@@ -1,8 +1,9 @@
 "use client"
 import React, { useState } from 'react';
-import { Wallet } from 'lucide-react';
+import { Wallet, Send, QrCode } from 'lucide-react';
 import { WalletInfo } from './WalletInfo';
 import { TransferForm } from './TransferForm';
+import { RequestPayment } from './RequestPayment';
 import { ChainSwitcher } from './ChainSwitcher';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useDisconnect } from 'wagmi';
@@ -44,10 +45,13 @@ const getErrorMessage = (error: unknown): string => {
     return '';
 };
 
+type Tab = 'send' | 'request';
+
 export const CryptoTransfer: React.FC = () => {
     const { address: walletAddress, isConnected, chainId, balance, balanceUpdated, refreshBalance, setBalanceUpdated } = useWallet();
     const { disconnect } = useDisconnect();
 
+    const [activeTab, setActiveTab] = useState<Tab>('send');
     const currentChainName = CHAIN_NAMES[chainId] || `Chain ${chainId}`;
     const blockExplorerUrl = CHAIN_EXPLORERS[chainId] || '';
     const [recipientAddress, setRecipientAddress] = useState('');
@@ -130,7 +134,7 @@ export const CryptoTransfer: React.FC = () => {
                 <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
                     <Wallet className="w-8 h-8 text-indigo-600" />
                 </div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Crypto Transfer</h1>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Nova Wallet</h1>
                 <p className="text-gray-600">{currentChainName}</p>
             </div>
 
@@ -141,18 +145,52 @@ export const CryptoTransfer: React.FC = () => {
                     <ChainSwitcher />
                     <WalletInfo address={walletAddress} balance={balance} balanceUpdated={balanceUpdated} />
 
-                    <TransferForm
-                        recipientAddress={recipientAddress}
-                        amount={amount}
-                        loading={loading}
-                        error={error}
-                        txHash={txHash}
-                        blockExplorerUrl={blockExplorerUrl}
-                        onRecipientChange={setRecipientAddress}
-                        onAmountChange={setAmount}
-                        onSubmit={sendTransaction}
-                        onReset={resetTransferForm}
-                    />
+                    {/* Tabs */}
+                    <div className="flex border-b border-gray-200">
+                        <button
+                            onClick={() => setActiveTab('send')}
+                            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                                activeTab === 'send'
+                                    ? 'border-indigo-600 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            <Send className="w-4 h-4" />
+                            Send Crypto
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('request')}
+                            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+                                activeTab === 'request'
+                                    ? 'border-indigo-600 text-indigo-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            <QrCode className="w-4 h-4" />
+                            Request Payment
+                        </button>
+                    </div>
+
+                    {/* Tab Content */}
+                    {activeTab === 'send' ? (
+                        <TransferForm
+                            recipientAddress={recipientAddress}
+                            amount={amount}
+                            loading={loading}
+                            error={error}
+                            txHash={txHash}
+                            blockExplorerUrl={blockExplorerUrl}
+                            onRecipientChange={setRecipientAddress}
+                            onAmountChange={setAmount}
+                            onSubmit={sendTransaction}
+                            onReset={resetTransferForm}
+                        />
+                    ) : (
+                        <RequestPayment 
+                            walletAddress={walletAddress}
+                            isConnected={isConnected}
+                        />
+                    )}
 
                     <button
                         onClick={disconnectWallet}

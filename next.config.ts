@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  webpack: (config) => {
+    config.externals.push("pino-pretty", "lokijs", "encoding");
+    return config;
+  },
+
+  async rewrites() {
+    return [];
+  },
+
+  turbopack: {},
 };
 
 export default nextConfig;

@@ -88,9 +88,7 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap gap-4">
               <a
-                href="https://nova-wallet.ai"
-                target="_blank"
-                rel="noreferrer"
+                href="#app"
                 className="inline-flex items-center justify-center rounded-2xl bg-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:bg-indigo-400"
               >
                 Mulai Eksplorasi
@@ -113,7 +111,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="relative">
+          <div id="app" className="relative">
             <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-indigo-500 to-cyan-500 opacity-60 blur-2xl" />
             <div className="relative rounded-3xl border border-white/10 bg-slate-900/80 p-1 shadow-2xl backdrop-blur">
               <div className="rounded-[22px] bg-white p-6 text-slate-900 shadow-xl sm:p-8">
@@ -165,8 +163,8 @@ export default function Home() {
                 Tiga langkah untuk cek saldo via Gemini AI
               </h2>
               <p className="text-slate-300">
-                Fokus awal kita: bikin AI bisa menjawab “berapa saldo wallet aku
-                di Lisk Sepolia?” dengan memanfaatkan RPC Blockscout.
+                Fokus awal kita: bikin AI bisa menjawab "berapa saldo wallet aku
+                di Lisk Sepolia?" dengan memanfaatkan RPC Blockscout.
               </p>
             </div>
             <div className="flex-1 space-y-6">

@@ -1,0 +1,2 @@
+{"error":"QR code URL not found in Midtrans response","level":"error","message":"Failed to create Midtrans QRIS","orderId":"0bfa31a3-52ea-4903-8f0b-07040e827465","service":"crypto-payment-service","timestamp":"2025-11-28 22:25:36"}
+{"error":"Midtrans QRIS creation failed: QR code URL not found in Midtrans response","level":"error","message":"Failed to create QRIS","service":"crypto-payment-service","timestamp":"2025-11-28 22:25:36"}
