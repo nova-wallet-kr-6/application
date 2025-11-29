@@ -16,6 +16,10 @@ export interface TransactionPreviewData {
 	validations: {
 		hasBalance: boolean;
 		issues: string[];
+		warnings?: string[];
+		recommendations?: string[];
+		requiresDoubleConfirm?: boolean;
+		amountUSD?: number;
 	};
 }
 
@@ -57,6 +61,14 @@ export const TransactionConfirmModal: React.FC<TransactionConfirmModalProps> = (
 							{preview.preview.amountFormatted}
 						</span>
 					</div>
+					{preview.validations.amountUSD && (
+						<div className="flex items-center justify-between">
+							<span className="text-slate-400">Nilai Estimasi</span>
+							<span className="text-slate-300">
+								~${preview.validations.amountUSD.toFixed(2)} USD
+							</span>
+						</div>
+					)}
 					<div className="flex items-center justify-between">
 						<span className="text-slate-400">Penerima</span>
 						<span className="font-mono text-[11px] text-slate-100">
@@ -77,14 +89,58 @@ export const TransactionConfirmModal: React.FC<TransactionConfirmModalProps> = (
 					</div>
 				</div>
 
+				{/* Critical Issues (Blocking) */}
 				{preview.validations.issues.length > 0 && (
-					<div className="mt-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
-						<p className="font-semibold mb-2">Perlu diperhatikan:</p>
+					<div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+						<p className="font-semibold mb-2 flex items-center gap-2">
+							<span>❌</span>
+							<span>Masalah yang Harus Diperbaiki:</span>
+						</p>
 						<ul className="list-disc space-y-1 pl-4">
-							{preview.validations.issues.map((issue) => (
-								<li key={issue}>{issue}</li>
+							{preview.validations.issues.map((issue, idx) => (
+								<li key={idx}>{issue}</li>
 							))}
 						</ul>
+					</div>
+				)}
+
+				{/* Warnings (Non-blocking) */}
+				{preview.validations.warnings && preview.validations.warnings.length > 0 && (
+					<div className="mt-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+						<p className="font-semibold mb-2 flex items-center gap-2">
+							<span>⚠️</span>
+							<span>Peringatan:</span>
+						</p>
+						<ul className="list-disc space-y-1 pl-4">
+							{preview.validations.warnings.map((warning, idx) => (
+								<li key={idx}>{warning}</li>
+							))}
+						</ul>
+					</div>
+				)}
+
+				{/* Recommendations */}
+				{preview.validations.recommendations && preview.validations.recommendations.length > 0 && (
+					<div className="mt-4 rounded-2xl border border-blue-500/40 bg-blue-500/10 p-4 text-sm text-blue-200">
+						<p className="font-semibold mb-2 flex items-center gap-2">
+							<span>💡</span>
+							<span>Saran:</span>
+						</p>
+						<ul className="list-disc space-y-1 pl-4">
+							{preview.validations.recommendations.map((rec, idx) => (
+								<li key={idx}>{rec}</li>
+							))}
+						</ul>
+					</div>
+				)}
+
+				{/* Double Confirmation Warning */}
+				{preview.validations.requiresDoubleConfirm && (
+					<div className="mt-4 rounded-2xl border border-purple-500/40 bg-purple-500/10 p-4 text-sm text-purple-200">
+						<p className="font-semibold flex items-center gap-2">
+							<span>🔐</span>
+							<span>Transaksi ini memerlukan konfirmasi tambahan karena nilai yang besar.</span>
+						</p>
 					</div>
 				)}
 

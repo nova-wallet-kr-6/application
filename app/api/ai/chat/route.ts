@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { parseIntent } from "@/lib/intentParser";
 import { isAddress as viemIsAddress } from "viem";
+import guardianService from "@/lib/services/guardian.service";
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -138,36 +139,31 @@ const prepareSendTransaction = async ({
     amount,
     chainId,
 }: PrepareSendParams) => {
-    const issues: string[] = [];
-
-    if (!isValidAddress(toAddress)) {
-        issues.push("Alamat tujuan tidak valid. Pastikan formatnya 0x...");
-    }
-
-    if (!Number.isFinite(amount) || amount <= 0) {
-        issues.push("Jumlah yang ingin dikirim harus lebih besar dari 0.");
-    }
-
+    // Get balance data first
     const balanceData = await checkBalance(fromAddress, chainId);
     const tokenSymbol = balanceData.tokenSymbol || "ETH";
     const chainName = balanceData.formattedChainName;
     const chainIdResolved = balanceData.chainId || chainId;
     const balanceValue = parseFloat(balanceData.balanceEth);
-    const hasBalance = Number.isFinite(balanceValue)
-        ? balanceValue >= amount
-        : false;
-
-    if (!hasBalance) {
-        issues.push(
-            `Saldo kamu di ${chainName} hanya ${balanceData.balanceEth} ${tokenSymbol}.`,
-        );
-    }
-
     const gasEstimateEth = estimateGasCost();
     const totalEstimate = amount + gasEstimateEth;
 
+    // Run Guardian validation
+    const guardianResult = await guardianService.validateTransaction({
+        fromAddress,
+        toAddress,
+        amount,
+        chainId: chainIdResolved,
+        tokenSymbol,
+        gasEstimate: gasEstimateEth,
+        currentBalance: balanceValue,
+    });
+
+    // Determine if has sufficient balance (for backward compatibility)
+    const hasBalance = Number.isFinite(balanceValue) && balanceValue >= totalEstimate;
+
     return {
-        success: issues.length === 0,
+        success: guardianResult.valid,
         preview: {
             fromAddress,
             toAddress,
@@ -181,7 +177,11 @@ const prepareSendTransaction = async ({
         },
         validations: {
             hasBalance,
-            issues,
+            issues: guardianResult.issues,
+            warnings: guardianResult.warnings,
+            recommendations: guardianResult.recommendations,
+            requiresDoubleConfirm: guardianResult.requiresDoubleConfirm,
+            amountUSD: guardianResult.amountUSD,
         },
     };
 };
@@ -194,14 +194,37 @@ const buildSendMessage = (
     message += `\nPerkiraan gas fee: ${preview.preview.gasEstimate}.`;
     message += `\nPerkiraan total: ${preview.preview.totalEstimate}.`;
 
+    // Show USD value if available
+    if (preview.validations.amountUSD) {
+        message += `\nNilai estimasi: ~$${preview.validations.amountUSD.toFixed(2)} USD`;
+    }
+
+    // Show critical issues (blocking)
     if (preview.validations.issues.length) {
-        message += `\n\nNamun ada beberapa catatan:\n- ${preview.validations.issues.join(
+        message += `\n\n❌ MASALAH YANG HARUS DIPERBAIKI:\n- ${preview.validations.issues.join(
             "\n- ",
         )}`;
-        message += `\nPerbaiki hal di atas sebelum melanjutkan.`;
-    } else {
-        message += `\n\nJika kamu setuju, klik tombol konfirmasi untuk mengirim transaksi. Kamu tetap akan diminta menyetujui di wallet.`;
+        message += `\n\nPerbaiki hal di atas sebelum melanjutkan.`;
+        return message;
     }
+
+    // Show warnings (non-blocking)
+    if (preview.validations.warnings && preview.validations.warnings.length) {
+        message += `\n\n⚠️ PERINGATAN:\n- ${preview.validations.warnings.join("\n- ")}`;
+    }
+
+    // Show recommendations
+    if (preview.validations.recommendations && preview.validations.recommendations.length) {
+        message += `\n\n💡 SARAN:\n- ${preview.validations.recommendations.join("\n- ")}`;
+    }
+
+    // Double confirmation warning
+    if (preview.validations.requiresDoubleConfirm) {
+        message += `\n\n🔐 Transaksi ini memerlukan konfirmasi tambahan karena nilai yang besar.`;
+    }
+
+    message += `\n\nJika kamu setuju, klik tombol konfirmasi untuk mengirim transaksi. Kamu tetap akan diminta menyetujui di wallet.`;
+    
     return message;
 };
 
