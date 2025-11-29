@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { MessageCircle, SendHorizonal, X } from "lucide-react";
 import { parseEther } from "viem";
 import { useSendTransaction } from "wagmi";
@@ -24,6 +24,38 @@ const formatTimestamp = (timestamp: number) =>
         minute: "2-digit",
     }).format(timestamp);
 
+// Loading indicator component dengan animasi typing dots yang smooth
+const TypingIndicator = () => {
+    return (
+        <div className="flex items-center gap-2">
+            <div className="flex gap-1.5 items-center">
+                <div
+                    className="h-2 w-2 rounded-full bg-indigo-400"
+                    style={{
+                        animation: 'typingDot 1.4s ease-in-out infinite',
+                        animationDelay: '0s'
+                    }}
+                ></div>
+                <div
+                    className="h-2 w-2 rounded-full bg-indigo-400"
+                    style={{
+                        animation: 'typingDot 1.4s ease-in-out infinite',
+                        animationDelay: '0.2s'
+                    }}
+                ></div>
+                <div
+                    className="h-2 w-2 rounded-full bg-indigo-400"
+                    style={{
+                        animation: 'typingDot 1.4s ease-in-out infinite',
+                        animationDelay: '0.4s'
+                    }}
+                ></div>
+            </div>
+            <span className="text-xs text-slate-400">Nova AI sedang mengetik...</span>
+        </div>
+    );
+};
+
 export const ChatDock = () => {
     const { address, chainId, isConnected, balance, refreshBalance } = useWallet();
     const { sendTransactionAsync } = useSendTransaction();
@@ -44,9 +76,15 @@ export const ChatDock = () => {
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
     const [isTxProcessing, setIsTxProcessing] = useState(false);
     const [txModalError, setTxModalError] = useState("");
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const appendMessage = (message: ChatMessage) =>
         setMessages((prev) => [...prev, message]);
+
+    // Auto-scroll ke bawah ketika ada message baru atau loading
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages, isSending]);
 
     const handleSend = async () => {
         if (!input.trim()) return;
@@ -270,6 +308,19 @@ export const ChatDock = () => {
                             </div>
                         </div>
                     ))}
+                    {/* Loading indicator ketika AI sedang memproses */}
+                    {isSending && (
+                        <div className="space-y-1">
+                            <div className="text-xs font-semibold text-slate-400">
+                                Nova AI • {formatTimestamp(Date.now())}
+                            </div>
+                            <div className="rounded-2xl bg-white/5 px-4 py-3">
+                                <TypingIndicator />
+                            </div>
+                        </div>
+                    )}
+                    {/* Invisible div untuk auto-scroll */}
+                    <div ref={messagesEndRef} />
                 </div>
 
                 <div className="border-t border-white/5 px-4 py-3">
