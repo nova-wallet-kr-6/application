@@ -852,3 +852,5 @@
 {"amount":1e-12,"balance":0.3819490522788958,"level":"info","message":"Guardian: Validating amount","service":"crypto-payment-service","timestamp":"2025-11-29 20:56:49","tokenSymbol":"LSK"}
 {"level":"info","message":"Guardian: Amount validation completed","requiresDoubleConfirm":false,"service":"crypto-payment-service","timestamp":"2025-11-29 20:56:49","warningsCount":1}
 {"issuesCount":0,"level":"info","message":"Guardian: Validation completed","requiresDoubleConfirm":false,"service":"crypto-payment-service","severity":"medium","timestamp":"2025-11-29 20:56:49","valid":true,"warningsCount":3}
+{"amount":50,"level":"info","message":"Slippage: Fetching predictions","service":"crypto-payment-service","side":"buy","symbol":"BTC/USDT","timestamp":"2025-11-30 00:58:59"}
+{"bestVenue":"okx","level":"info","message":"Slippage: Predictions received","quotesCount":3,"service":"crypto-payment-service","timestamp":"2025-11-30 00:59:03"}

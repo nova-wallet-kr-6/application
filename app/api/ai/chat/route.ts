@@ -3,6 +3,7 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { parseIntent, type ParsedIntent } from "@/lib/intentParser";
 import { isAddress as viemIsAddress } from "viem";
 import guardianService from "@/lib/services/guardian.service";
+import slippageService from "@/lib/services/slippage.service";
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -57,6 +58,29 @@ Tugas kamu:
 2. Jelaskan informasi crypto dengan bahasa sederhana
 3. Validasi transaksi sebelum execute (jangan pernah execute tanpa konfirmasi user)
 4. PENTING: Ketika user ingin transfer, kamu bisa mengumpulkan informasi secara bertahap (multi-turn conversation). Jika user memberikan informasi secara bertahap (misalnya: jumlah di message pertama, alamat di message kedua), kamu harus mengingat informasi dari conversation sebelumnya dan mengumpulkannya sampai lengkap sebelum meminta konfirmasi.
+5. KONSULTASI SLIPPAGE: Ketika user bertanya tentang perbandingan exchange, prediksi biaya, atau mana exchange terbaik untuk trade, WAJIB LANGSUNG call function compareExchanges. JANGAN hanya bilang "saya akan mencari" atau "mohon tunggu" - LANGSUNG CALL FUNCTION!
+
+   PENTING - WAJIB CALL FUNCTION SEKARANG JUGA:
+   - Jika user bertanya tentang exchange, slippage, atau perbandingan biaya, LANGSUNG call compareExchanges
+   - JANGAN hanya bilang "saya akan mencari" atau "mohon tunggu" tanpa call function
+   - JANGAN tanya-tanya dulu - jika informasi sudah cukup, LANGSUNG CALL
+   - Function akan otomatis membandingkan 4 exchange (Binance, Kraken, Coinbase, OKX)
+
+   Cara menggunakan compareExchanges:
+   - symbol: Format BASE/QUOTE (contoh: "BTC/USDT", "ETH/USDT", "ETH/BTC")
+     * Jika user bilang "beli BTC" atau "jual ETH", infer symbol dari konteks
+     * Default quote currency adalah USDT jika tidak disebutkan
+     * Jika user bilang "BTC/USDT", gunakan itu langsung
+   - amount: Jumlah dalam base currency (bukan USD). Contoh: untuk "BTC/USDT" dengan amount 50 berarti 50 BTC
+   - side: "buy" untuk beli token, "sell" untuk jual token
+     * "beli" = "buy", "jual" = "sell"
+   
+   Format response SETELAH function call:
+   - Jelaskan hasil dalam Bahasa Indonesia yang mudah dipahami
+   - Sertakan tabel perbandingan dari response.table (format markdown)
+   - Highlight exchange terbaik (best_venue) dengan ⭐
+   - Jelaskan apa itu slippage dan mengapa penting (singkat)
+   - Berikan rekomendasi berdasarkan total cost terendah
 
 PENTING - Format Jawaban Saldo:
 - SELALU sebutkan chain name (misalnya "di Lisk Sepolia", "di Polygon", "di Ethereum Mainnet")
@@ -110,6 +134,30 @@ const checkBalanceFunction = {
             },
         },
         required: ["address", "chainId"],
+    },
+};
+
+const compareExchangesFunction = {
+    name: "compareExchanges",
+    description: "Bandingkan exchange dan prediksi slippage untuk trade cryptocurrency. Gunakan ini ketika user ingin konsultasi tentang exchange terbaik atau prediksi biaya real (termasuk slippage) untuk trade.",
+    parameters: {
+        type: SchemaType.OBJECT,
+        properties: {
+            symbol: {
+                type: SchemaType.STRING as const,
+                description: "Trading pair dalam format BASE/QUOTE, contoh: BTC/USDT, ETH/USDT, ETH/BTC",
+            },
+            amount: {
+                type: SchemaType.NUMBER as const,
+                description: "Jumlah cryptocurrency yang ingin ditrade (dalam base currency, bukan USD)",
+            },
+            side: {
+                type: SchemaType.STRING as const,
+                enum: ["buy", "sell"],
+                description: "Aksi trade: 'buy' untuk beli token, 'sell' untuk jual token",
+            },
+        },
+        required: ["symbol", "amount", "side"],
     },
 };
 
@@ -300,6 +348,7 @@ export async function POST(request: Request) {
                 toAddress?: string;
                 chainId?: number;
                 chainName?: string;
+                tradingPair?: string;
             } = {};
 
             // Parse all messages to accumulate entities
@@ -318,6 +367,9 @@ export async function POST(request: Request) {
                 if (parsed.entities.chainId) {
                     accumulatedEntities.chainId = parsed.entities.chainId;
                     accumulatedEntities.chainName = parsed.entities.chainName;
+                }
+                if (parsed.entities.tradingPair) {
+                    accumulatedEntities.tradingPair = parsed.entities.tradingPair;
                 }
             }
 
@@ -339,6 +391,7 @@ export async function POST(request: Request) {
                 toAddress: parsedIntent.entities.toAddress ?? accumulatedEntities.toAddress,
                 chainId: parsedIntent.entities.chainId ?? accumulatedEntities.chainId,
                 chainName: parsedIntent.entities.chainName ?? accumulatedEntities.chainName,
+                tradingPair: parsedIntent.entities.tradingPair ?? accumulatedEntities.tradingPair,
             },
         };
 
@@ -347,21 +400,33 @@ export async function POST(request: Request) {
             finalIntent.entities.chainId ??
             4202; // default Lisk Sepolia
 
+        // Check for CONSULT_SLIPPAGE intent first (higher priority)
+        const hasConsultSlippageIntent = body.messages.some(msg => {
+            const intent = parseIntent(msg.content);
+            return intent.intent === "CONSULT_SLIPPAGE";
+        }) || finalIntent.intent === "CONSULT_SLIPPAGE";
+
         // Check for SEND intent in any message (not just last)
         // OR if we have complete transaction info (amount + toAddress), treat as SEND intent
-        const hasSendIntent = body.messages.some(msg => {
-            const intent = parseIntent(msg.content);
-            return intent.intent === "SEND";
-        }) || finalIntent.intent === "SEND";
+        // BUT: Don't process as SEND if it's actually CONSULT_SLIPPAGE
+        const hasSendIntent = !hasConsultSlippageIntent && (
+            body.messages.some(msg => {
+                const intent = parseIntent(msg.content);
+                return intent.intent === "SEND";
+            }) || finalIntent.intent === "SEND"
+        );
 
         // Also check if we have complete transaction info from accumulated entities
         // This handles cases where user provides info step by step without explicit "kirim/send" keywords
+        // BUT: Only if it's not CONSULT_SLIPPAGE
         const hasCompleteTransactionInfo =
+            !hasConsultSlippageIntent &&
             accumulatedEntities.amount !== undefined &&
             accumulatedEntities.toAddress !== undefined;
 
         // If we have complete info, treat as SEND intent even without explicit keyword
-        const shouldProcessAsSend = hasSendIntent || hasCompleteTransactionInfo;
+        // BUT: Don't if it's CONSULT_SLIPPAGE
+        const shouldProcessAsSend = !hasConsultSlippageIntent && (hasSendIntent || hasCompleteTransactionInfo);
 
         // Debug logging
         console.log('[AI Chat] Intent Analysis:', {
@@ -383,6 +448,12 @@ export async function POST(request: Request) {
                     "Hubungkan wallet kamu dulu supaya aku bisa cek saldo di Lisk Sepolia.",
                 intent: finalIntent,
             });
+        }
+
+        // Handle CONSULT_SLIPPAGE intent - konsultasi perbandingan exchange
+        if (finalIntent.intent === "CONSULT_SLIPPAGE") {
+            // Let Gemini handle this with function call - it will call compareExchanges
+            // We don't need to process it here, just let it go to Gemini
         }
 
         // Handle SEND intent with accumulated entities from conversation history
@@ -435,7 +506,7 @@ export async function POST(request: Request) {
             model: "gemini-2.0-flash",
             tools: [
                 {
-                    functionDeclarations: [checkBalanceFunction as any],
+                    functionDeclarations: [checkBalanceFunction as any, compareExchangesFunction as any],
                 },
             ],
         });
@@ -474,13 +545,28 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
 - Accumulated entities dari conversation history:
   * Amount: ${finalIntent.entities.amount ?? "belum diketahui"}
   * Token: ${finalIntent.entities.token ?? "belum diketahui"}
+  * Trading Pair: ${finalIntent.entities.tradingPair ?? "belum diketahui"}
   * To Address: ${finalIntent.entities.toAddress ?? "belum diketahui"}
   * Chain: ${finalIntent.entities.chainName ?? "belum diketahui"}
 
 PENTING untuk Multi-turn Conversation:
 - Jika user memberikan informasi transfer secara bertahap (misalnya: jumlah di message pertama, alamat di message kedua), kamu harus mengingat informasi dari conversation sebelumnya.
 - Ketika semua informasi sudah lengkap (amount + toAddress), sistem akan otomatis memproses transaksi.
-- Jika informasi belum lengkap, minta user untuk melengkapi informasi yang kurang.`;
+- Jika informasi belum lengkap, minta user untuk melengkapi informasi yang kurang.
+
+PENTING untuk CONSULT_SLIPPAGE:
+- Jika intent adalah CONSULT_SLIPPAGE atau user bertanya tentang exchange/slippage, WAJIB LANGSUNG call compareExchanges
+- JANGAN hanya bilang "saya akan mencari" atau "mohon tunggu" - LANGSUNG CALL FUNCTION!
+- Jika user memberikan symbol trading pair (misalnya "BTC/USDT") setelah bertanya tentang exchange, itu adalah kelanjutan dari CONSULT_SLIPPAGE
+- Gunakan accumulated entities untuk build parameter compareExchanges:
+  * symbol: Gunakan tradingPair jika ada (misalnya "BTC/USDT"), atau build dari token + "USDT" (default)
+  * amount: Gunakan amount dari accumulated entities
+  * side: Infer dari konteks - "beli" = "buy", "jual" = "sell"
+- Contoh: Jika user bilang "beli 50 BTC" lalu "BTC/USDT", berarti:
+  * symbol: "BTC/USDT" (dari tradingPair)
+  * amount: 50 (dari accumulated)
+  * side: "buy" (dari "beli")
+  * LANGSUNG CALL compareExchanges dengan parameter tersebut SEKARANG JUGA!`;
 
         // Start chat dengan history
         const chat = model.startChat({
@@ -606,6 +692,68 @@ PENTING untuk Multi-turn Conversation:
                                             error instanceof Error
                                                 ? error.message
                                                 : "Gagal mengambil saldo",
+                                    },
+                                },
+                            };
+                        }
+                    }
+
+                    if (fnCall.name === "compareExchanges") {
+                        const { symbol, amount, side } = fnCall.args as {
+                            symbol?: string;
+                            amount?: number;
+                            side?: "buy" | "sell";
+                        };
+
+                        if (!symbol || !amount || !side) {
+                            return {
+                                functionResponse: {
+                                    name: "compareExchanges",
+                                    response: {
+                                        success: false,
+                                        error: "Parameter tidak lengkap. Diperlukan: symbol (contoh: BTC/USDT), amount, dan side (buy/sell).",
+                                    },
+                                },
+                            };
+                        }
+
+                        try {
+                            const slippageData = await slippageService.getPredictions({
+                                symbol,
+                                amount,
+                                side,
+                            });
+
+                            // Format response dengan penjelasan dan table
+                            const formattedExplanation = slippageService.formatResponseForAI(
+                                slippageData,
+                                { symbol, amount, side }
+                            );
+                            const formattedTable = slippageService.formatAsTable(slippageData);
+
+                            return {
+                                functionResponse: {
+                                    name: "compareExchanges",
+                                    response: {
+                                        success: true,
+                                        best_venue: slippageData.best_venue,
+                                        quotes: slippageData.quotes,
+                                        explanation: formattedExplanation,
+                                        table: formattedTable,
+                                    },
+                                },
+                            };
+                        } catch (error) {
+                            const errorMessage = error instanceof Error
+                                ? error.message
+                                : "Gagal mengambil data perbandingan exchange. Silakan coba lagi nanti.";
+
+                            return {
+                                functionResponse: {
+                                    name: "compareExchanges",
+                                    response: {
+                                        success: false,
+                                        error: errorMessage,
                                     },
                                 },
                             };

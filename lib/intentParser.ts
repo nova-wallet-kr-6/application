@@ -2,6 +2,7 @@ export type Intent =
     | "GET_BALANCE"
     | "SEND"
     | "SWAP"
+    | "CONSULT_SLIPPAGE"
     | "UNKNOWN";
 
 export type ParsedIntent = {
@@ -13,6 +14,7 @@ export type ParsedIntent = {
         toAddress?: string;
         chainId?: number;
         chainName?: string;
+        tradingPair?: string; // e.g., "BTC/USDT", "ETH/USDT"
     };
 };
 
@@ -111,10 +113,46 @@ export const parseIntent = (message: string): ParsedIntent => {
     let intent: Intent = "UNKNOWN";
     let confidence = 0.3;
 
+    // PRIORITAS: Check CONSULT_SLIPPAGE SEBELUM SEND untuk menghindari false positive
+    // Keywords untuk konsultasi slippage/exchange
+    const consultKeywords = [
+        /slippage/i,
+        /bandingkan.*exchange/i,
+        /compare.*exchange/i,
+        /mana.*exchange/i,
+        /exchange.*mana/i,
+        /exchange.*apa/i,
+        /mana.*terbaik/i,
+        /terbaik.*exchange/i,
+        /prediksi.*biaya/i,
+        /hitung.*biaya/i,
+        /konsultasi/i,
+        /mending.*beli/i,
+        /mending.*jual/i,
+        /mending.*di.*exchange/i,
+        /mending.*exchange/i,
+        /mana.*yang.*lebih/i,
+        /mana.*lebih.*murah/i,
+        /rekomendasi.*exchange/i,
+        /di.*exchange.*mana/i,
+        /di.*exchange.*apa/i,
+    ];
+
+    // Check if message contains trading pair format (BASE/QUOTE) - likely CONSULT_SLIPPAGE follow-up
+    const tradingPairPattern = /([A-Z]{2,10}\/[A-Z]{2,10})/;
+    const tradingPairMatch = message.match(tradingPairPattern);
+    const tradingPair = tradingPairMatch ? tradingPairMatch[1] : undefined;
+    const hasTradingPair = !!tradingPair;
+
     if (/saldo|balance|cek saldo|berapa/i.test(lowerMessage)) {
         intent = "GET_BALANCE";
         confidence = 0.95;
-    } else if (/kirim|send|transfer/i.test(lowerMessage)) {
+    } else if (consultKeywords.some(regex => regex.test(lowerMessage)) || hasTradingPair) {
+        // Consult slippage intent - PRIORITAS TINGGI untuk menghindari false positive dengan SEND
+        // Also detect trading pair format (BASE/QUOTE) as CONSULT_SLIPPAGE follow-up
+        intent = "CONSULT_SLIPPAGE";
+        confidence = hasTradingPair ? 0.8 : 0.9; // Slightly lower confidence for trading pair only
+    } else if (/kirim|send|transfer|tf/i.test(lowerMessage)) {
         intent = "SEND";
         confidence = 0.9;
     } else if (toAddress && amount) {
@@ -144,6 +182,7 @@ export const parseIntent = (message: string): ParsedIntent => {
             toAddress,
             chainId,
             chainName,
+            tradingPair,
         },
     };
 };
