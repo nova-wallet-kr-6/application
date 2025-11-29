@@ -126,8 +126,57 @@ const DEFAULT_GAS_PRICE_GWEI = 10;
 const isValidAddress = (address: string) =>
     viemIsAddress(address as `0x${string}`);
 
-const formatNumber = (value: number) =>
-    Number.isFinite(value) ? value.toFixed(6) : "0";
+const formatNumber = (value: number) => {
+    if (!Number.isFinite(value)) return "0";
+    if (value === 0) return "0";
+
+    // Handle very small numbers (use more precision, but readable format)
+    if (value > 0 && value < 0.000001) {
+        // Convert to string to check format
+        const str = value.toString();
+
+        // If it's in scientific notation, convert to readable decimal
+        if (str.includes('e')) {
+            const [base, exp] = str.split('e');
+            const exponent = parseInt(exp);
+            const baseNum = parseFloat(base);
+
+            // For very small exponents, show as decimal
+            if (exponent >= -18) {
+                // Calculate how many decimal places needed
+                const decimalPlaces = Math.abs(exponent) + Math.max(3, baseNum.toString().replace('.', '').length);
+                const decimalValue = baseNum * Math.pow(10, exponent);
+                const formatted = decimalValue.toFixed(Math.min(18, decimalPlaces));
+                // Remove trailing zeros
+                return formatted.replace(/\.?0+$/, '') || '0';
+            }
+            // For extremely small numbers, use compact scientific notation
+            return `${baseNum.toFixed(3)}e${exp}`;
+        }
+
+        // Regular decimal - show enough precision
+        // Find first non-zero digit
+        const decimalStr = value.toFixed(18);
+        const firstNonZeroIndex = decimalStr.search(/[1-9]/);
+        if (firstNonZeroIndex > 0) {
+            // Show from first non-zero + a few more digits
+            const precision = Math.min(18, firstNonZeroIndex - 2 + 6);
+            const formatted = value.toFixed(precision);
+            return formatted.replace(/\.?0+$/, '') || '0';
+        }
+    }
+
+    // For normal numbers, use up to 18 decimal places (Ethereum precision)
+    // But remove trailing zeros intelligently
+    const formatted = value.toFixed(18);
+    // Remove trailing zeros
+    const withoutTrailingZeros = formatted.replace(/\.?0+$/, '');
+    // If we removed everything after decimal, add .0 for clarity
+    if (!withoutTrailingZeros.includes('.')) {
+        return `${withoutTrailingZeros}.0`;
+    }
+    return withoutTrailingZeros;
+};
 
 const estimateGasCost = (gasPriceGwei = DEFAULT_GAS_PRICE_GWEI) => {
     const gasPriceEth = gasPriceGwei / 1e9;

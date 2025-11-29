@@ -64,14 +64,41 @@ class GuardianService {
       const checksummedAddress = getAddress(address);
 
       // Check if the provided address matches the checksummed version
+      const isAllLower = address === address.toLowerCase();
+      const isAllUpper = address === address.toUpperCase();
+      const isMixedCase = !isAllLower && !isAllUpper;
+
       if (checksummedAddress !== address) {
-        // Address is valid but not checksummed
-        warnings.push(
-          `Alamat tidak menggunakan checksum EIP-55. Untuk keamanan lebih baik, gunakan: ${checksummedAddress}`
-        );
-        recommendations.push(
-          'Checksum membantu mencegah typo pada alamat. Selalu gunakan alamat dengan checksum yang benar.'
-        );
+        // Only warn if address is clearly not checksummed:
+        // - All lowercase (common when copy-pasting from some sources)
+        // - All uppercase (rare but possible)
+        // - Mixed case but wrong (likely typo - important to warn)
+
+        // For all lowercase, show a softer warning (might be from MetaMask export or other valid source)
+        if (isAllLower) {
+          warnings.push(
+            `Alamat menggunakan format lowercase. Untuk keamanan ekstra, gunakan format checksum: ${checksummedAddress}`
+          );
+          recommendations.push(
+            'Format checksum membantu mencegah typo. Alamat lowercase tetap valid, tapi checksum lebih aman.'
+          );
+        } else if (isAllUpper) {
+          // All uppercase is unusual - warn
+          warnings.push(
+            `Alamat menggunakan format uppercase. Untuk keamanan, gunakan format checksum: ${checksummedAddress}`
+          );
+        } else if (isMixedCase) {
+          // Mixed case but wrong checksum - likely typo, important warning
+          warnings.push(
+            `Alamat memiliki checksum yang tidak sesuai. Format yang benar: ${checksummedAddress}`
+          );
+          recommendations.push(
+            'Periksa kembali alamat - mungkin ada typo. Checksum yang salah bisa berarti alamat salah.'
+          );
+        }
+      } else {
+        // Address is already properly checksummed - no warning needed
+        logger.info('Guardian: Address is properly checksummed', { address });
       }
     } catch (error) {
       // This shouldn't happen if isAddress passed, but handle it anyway
