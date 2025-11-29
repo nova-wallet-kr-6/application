@@ -241,7 +241,7 @@ export const ChatDock = () => {
                                 {formatTimestamp(message.timestamp)}
                             </div>
                             <div
-                                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === "user"
+                                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words ${message.role === "user"
                                     ? "bg-indigo-500/20 text-indigo-100"
                                     : "bg-white/5 text-slate-100"
                                     }`}

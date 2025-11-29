@@ -130,7 +130,8 @@ class SlippageService {
     }
 
     /**
-     * Format response for AI explanation - Mobile-friendly format
+     * Format response for AI explanation - Plain text friendly, mobile-optimized
+     * NO MARKDOWN - karena frontend tidak parse markdown
      */
     formatResponseForAI(response: SlippageResponse, request: SlippageRequest): string {
         const { best_venue, quotes } = response;
@@ -142,30 +143,57 @@ class SlippageService {
         const worstQuote = sortedQuotes[sortedQuotes.length - 1];
         const savings = worstQuote.total_cost - bestQuote.total_cost;
 
-        let formatted = `📊 **Hasil Perbandingan Exchange**\n\n`;
-        formatted += `**Transaksi:** ${side === 'buy' ? 'Beli' : 'Jual'} ${amount} ${symbol.split('/')[0]}\n\n`;
+        // Helper untuk format angka besar dengan lebih readable
+        const formatLargeNumber = (num: number): string => {
+            if (num >= 1000000) {
+                // Untuk jutaan, tampilkan dengan 2 desimal + M
+                const millions = num / 1000000;
+                return `$${millions.toFixed(2)}M`;
+            } else if (num >= 1000) {
+                // Untuk ribuan, tampilkan dengan 2 desimal + K
+                const thousands = num / 1000;
+                return `$${thousands.toFixed(2)}K`;
+            }
+            // Untuk angka kecil, tampilkan dengan 2 desimal
+            return `$${num.toFixed(2)}`;
+        };
 
-        // Summary dengan highlight yang jelas
-        formatted += `⭐ **REKOMENDASI: ${best_venue.toUpperCase()}**\n`;
-        formatted += `💰 Total Biaya: **$${bestQuote.total_cost.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**\n`;
-        if (savings > 100) { // Only show if significant savings
-            formatted += `💵 Hemat: **$${savings.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}** vs ${worstQuote.exchange.toUpperCase()}\n`;
+        // Helper untuk format angka dengan separator (untuk detail)
+        const formatWithSeparator = (num: number): string => {
+            return `$${num.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
+
+        // Format dengan plain text, spacing yang jelas, mobile-friendly
+        // NO MARKDOWN - karena frontend tidak parse markdown
+        // Gunakan line breaks dan spacing yang jelas untuk readability
+        let formatted = `📊 HASIL PERBANDINGAN EXCHANGE\n\n`;
+        formatted += `Transaksi: ${side === 'buy' ? 'Beli' : 'Jual'} ${amount} ${symbol.split('/')[0]}\n\n`;
+
+        // Summary box dengan highlight yang jelas
+        formatted += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        formatted += `⭐ REKOMENDASI: ${best_venue.toUpperCase()}\n`;
+        formatted += `💰 Total Biaya: ${formatLargeNumber(bestQuote.total_cost)}\n`;
+        if (savings > 100) {
+            formatted += `💵 Hemat: ${formatLargeNumber(savings)} vs ${worstQuote.exchange.toUpperCase()}\n`;
         }
-        formatted += `\n`;
+        formatted += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-        // Compact format untuk mobile - lebih readable
-        formatted += `**📋 Perbandingan Semua Exchange:**\n\n`;
-
+        // Format per exchange - card style yang readable
         sortedQuotes.forEach((quote, index) => {
             const isBest = quote.exchange === best_venue;
 
-            // Compact card format
-            formatted += `${isBest ? '⭐' : `${index + 1}.`} **${quote.exchange.toUpperCase()}**${isBest ? ' (TERBAIK)' : ''}\n`;
-            formatted += `   Total: **$${quote.total_cost.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**\n`;
-            formatted += `   Harga: $${quote.quote_price.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Slippage: ${quote.predicted_slippage_pct.toFixed(2)}%\n`;
-            formatted += `   Fee: $${(quote.fees.trading_fee + quote.fees.slippage_cost).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
+            // Exchange card
+            formatted += `${isBest ? '⭐' : `${index + 1}.`} ${quote.exchange.toUpperCase()}${isBest ? ' (TERBAIK)' : ''}\n`;
+            formatted += `\n`;
+            formatted += `   💰 TOTAL: ${formatLargeNumber(quote.total_cost)}\n`;
+            formatted += `   📈 Harga: ${formatLargeNumber(quote.quote_price)}\n`;
+            formatted += `   📊 Slippage: ${quote.predicted_slippage_pct.toFixed(2)}%\n`;
+            formatted += `   💸 Fee: ${formatLargeNumber(quote.fees.trading_fee + quote.fees.slippage_cost)}\n`;
 
+            // Spacing antar exchange
             if (index < sortedQuotes.length - 1) {
+                formatted += `\n`;
+                formatted += `─────────────────────────────\n`;
                 formatted += `\n`;
             }
         });
