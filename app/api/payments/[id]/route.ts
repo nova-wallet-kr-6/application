@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import paymentService from "@/lib/services/payment.service";
+import midtransService from "@/lib/services/midtrans.service";
 import logger from "@/lib/utils/logger";
 
 export async function GET(
@@ -29,9 +30,34 @@ export async function GET(
     const userCountry = "ID";
 
     // Fetch payment details
-    const payment = await paymentService.getPaymentDetails(id, userCountry);
+    let payment = await paymentService.getPaymentDetails(id, userCountry);
 
-    // Update status
+    // 🔄 LAZY STATUS CHECK: Jika status masih WAITING_PAYMENT dan method QRIS, cek ke Midtrans
+    if (payment.status === 'WAITING_PAYMENT' && payment.paymentMethod === 'QRIS') {
+      try {
+        const midtransStatus = await midtransService.getTransactionStatus(id); // id payment kita = orderId midtrans
+
+        if (midtransStatus && (midtransStatus.transaction_status === 'settlement' || midtransStatus.transaction_status === 'capture')) {
+          logger.info(`🔄 Lazy status update: Payment ${id} found as SETTLEMENT on Midtrans`);
+
+          // Update status di DB secara manual karena webhook mungkin missed
+          await paymentService.handleMidtransSuccess(id, {
+            transaction_id: midtransStatus.transaction_id,
+            transaction_time: midtransStatus.transaction_time,
+            gross_amount: midtransStatus.gross_amount
+          });
+
+          // Refresh object payment agar return data terbaru
+          payment = await paymentService.getPaymentDetails(id, userCountry);
+        }
+      } catch (checkError: any) {
+        // Ignore error jika transaksi belum ada di Midtrans atau koneksi gagal
+        // Jangan memblokir response utama
+        logger.warn(`Failed to check Midtrans status lazily for ${id}`, { error: checkError.message });
+      }
+    }
+
+    // Update status (metadata only basically)
     await paymentService.updatePaymentStatus(id, payment.status, {
       userIp,
       userCountry,
