@@ -348,10 +348,31 @@ export async function POST(request: Request) {
             4202; // default Lisk Sepolia
 
         // Check for SEND intent in any message (not just last)
+        // OR if we have complete transaction info (amount + toAddress), treat as SEND intent
         const hasSendIntent = body.messages.some(msg => {
             const intent = parseIntent(msg.content);
             return intent.intent === "SEND";
         }) || finalIntent.intent === "SEND";
+
+        // Also check if we have complete transaction info from accumulated entities
+        // This handles cases where user provides info step by step without explicit "kirim/send" keywords
+        const hasCompleteTransactionInfo =
+            accumulatedEntities.amount !== undefined &&
+            accumulatedEntities.toAddress !== undefined;
+
+        // If we have complete info, treat as SEND intent even without explicit keyword
+        const shouldProcessAsSend = hasSendIntent || hasCompleteTransactionInfo;
+
+        // Debug logging
+        console.log('[AI Chat] Intent Analysis:', {
+            lastMessage: lastMessage.content,
+            parsedIntent: parsedIntent.intent,
+            hasSendIntent,
+            hasCompleteTransactionInfo,
+            accumulatedEntities,
+            finalIntent: finalIntent.entities,
+            shouldProcessAsSend
+        });
 
         if (
             finalIntent.intent === "GET_BALANCE" &&
@@ -365,7 +386,7 @@ export async function POST(request: Request) {
         }
 
         // Handle SEND intent with accumulated entities from conversation history
-        if (hasSendIntent) {
+        if (shouldProcessAsSend) {
             if (!body.walletContext?.isConnected || !body.walletContext.address) {
                 return NextResponse.json({
                     message:
@@ -377,7 +398,8 @@ export async function POST(request: Request) {
             const amount = finalIntent.entities.amount;
             const toAddress = finalIntent.entities.toAddress;
 
-            if (!amount) {
+            // Check amount - use !== undefined to handle very small numbers (like 1e-12 which is truthy but might be treated as 0)
+            if (amount === undefined || amount === null || isNaN(amount) || amount <= 0) {
                 return NextResponse.json({
                     message:
                         "Aku perlu tahu jumlah yang ingin kamu kirim. Sebutkan jumlahnya, misalnya \"kirim 0.1 ETH\" atau \"0.1 LSK\".",

@@ -35,7 +35,8 @@ const tokenKeywords: Record<string, string[]> = {
 };
 
 const ADDRESS_REGEX = /0x[a-fA-F0-9]{40}/;
-const AMOUNT_REGEX = /(\d+(\.\d+)?)/;
+// Improved regex to handle very small numbers and scientific notation
+const AMOUNT_REGEX = /(\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i;
 
 const containsKeywords = (text: string, keywords: string[]) =>
     keywords.some((keyword) => text.includes(keyword));
@@ -64,8 +65,46 @@ export const parseIntent = (message: string): ParsedIntent => {
     const lowerMessage = message.toLowerCase();
 
     const toAddress = message.match(ADDRESS_REGEX)?.[0];
-    const amountMatch = message.match(AMOUNT_REGEX)?.[0];
-    const amount = amountMatch ? Number(amountMatch) : undefined;
+
+    // Improved amount extraction - find all number patterns and take the most specific one
+    // Exclude numbers that are part of addresses (0x...)
+    const addressPattern = /0x[a-fA-F0-9]{40}/;
+    const messageWithoutAddress = addressPattern.test(message)
+        ? message.replace(addressPattern, '')
+        : message;
+
+    const amountMatches = messageWithoutAddress.match(/(\d+(?:\.\d+)?(?:e[+-]?\d+)?)/gi);
+    let amount: number | undefined = undefined;
+
+    if (amountMatches && amountMatches.length > 0) {
+        // Try to find the most relevant amount (usually the one with more decimal places or explicit mention)
+        // For very small numbers, prefer the one with more precision
+        const amounts = amountMatches.map(m => {
+            try {
+                const num = Number(m);
+                // Exclude 0 and very large numbers (likely chain IDs or other context)
+                if (num === 0 || num > 1000000) return null;
+                return num;
+            } catch {
+                return null;
+            }
+        }).filter((n): n is number => n !== null && !isNaN(n));
+
+        if (amounts.length > 0) {
+            // If there are multiple numbers, prefer the one that's mentioned with token symbol
+            const withToken = lowerMessage.match(/(\d+(?:\.\d+)?(?:e[+-]?\d+)?)\s*(?:eth|lsk|usdt|usdc|matic|bnb)/i);
+            if (withToken) {
+                const tokenAmount = Number(withToken[1]);
+                if (tokenAmount > 0 && tokenAmount <= 1000000) {
+                    amount = tokenAmount;
+                }
+            } else {
+                // Take the first valid number that's reasonable (not too large, not 0)
+                amount = amounts[0];
+            }
+        }
+    }
+
     const token = detectToken(message);
     const { chainId, chainName } = detectChain(message);
 
@@ -82,6 +121,10 @@ export const parseIntent = (message: string): ParsedIntent => {
         // Implicit SEND intent: if message contains amount and address
         intent = "SEND";
         confidence = 0.8;
+    } else if (toAddress && /kesini|ke\s+(?:sini|address|wallet|alamat)/i.test(lowerMessage)) {
+        // If message contains address with direction words (kesini, ke address, etc), likely SEND intent
+        intent = "SEND";
+        confidence = 0.7;
     } else if (/swap|tukar|convert/i.test(lowerMessage)) {
         intent = "SWAP";
         confidence = 0.7;
