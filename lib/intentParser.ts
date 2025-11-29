@@ -85,6 +85,11 @@ export const parseIntent = (message: string): ParsedIntent => {
     } else if (/swap|tukar|convert/i.test(lowerMessage)) {
         intent = "SWAP";
         confidence = 0.7;
+    } else if (/yakin|ya|ok|oke|setuju|konfirmasi|lakukan|execute|proses|lanjut/i.test(lowerMessage)) {
+        // Confirmation keywords - might be confirming a previous SEND intent
+        // This helps with multi-turn conversation where user confirms after providing details
+        intent = "SEND";
+        confidence = 0.6; // Lower confidence, but will be combined with accumulated entities
     }
 
     return {

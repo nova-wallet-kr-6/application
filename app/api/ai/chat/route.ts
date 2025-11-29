@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { parseIntent } from "@/lib/intentParser";
+import { parseIntent, type ParsedIntent } from "@/lib/intentParser";
 import { isAddress as viemIsAddress } from "viem";
 import guardianService from "@/lib/services/guardian.service";
 
@@ -56,6 +56,7 @@ Tugas kamu:
 1. Bantu user cek saldo wallet mereka dengan memanggil function checkBalance ketika user bertanya tentang saldo
 2. Jelaskan informasi crypto dengan bahasa sederhana
 3. Validasi transaksi sebelum execute (jangan pernah execute tanpa konfirmasi user)
+4. PENTING: Ketika user ingin transfer, kamu bisa mengumpulkan informasi secara bertahap (multi-turn conversation). Jika user memberikan informasi secara bertahap (misalnya: jumlah di message pertama, alamat di message kedua), kamu harus mengingat informasi dari conversation sebelumnya dan mengumpulkannya sampai lengkap sebelum meminta konfirmasi.
 
 PENTING - Format Jawaban Saldo:
 - SELALU sebutkan chain name (misalnya "di Lisk Sepolia", "di Polygon", "di Ethereum Mainnet")
@@ -224,7 +225,7 @@ const buildSendMessage = (
     }
 
     message += `\n\nJika kamu setuju, klik tombol konfirmasi untuk mengirim transaksi. Kamu tetap akan diminta menyetujui di wallet.`;
-    
+
     return message;
 };
 
@@ -240,40 +241,98 @@ export async function POST(request: Request) {
         }
 
         const lastMessage = body.messages[body.messages.length - 1];
+
+        // Extract entities from entire conversation history (not just last message)
+        // This allows multi-turn conversation where user provides info step by step
+        const extractEntitiesFromHistory = (messages: Array<{ role: string; content: string }>) => {
+            let accumulatedEntities: {
+                amount?: number;
+                token?: string;
+                toAddress?: string;
+                chainId?: number;
+                chainName?: string;
+            } = {};
+
+            // Parse all messages to accumulate entities
+            for (const msg of messages) {
+                const parsed = parseIntent(msg.content);
+                // Accumulate entities (later messages override earlier ones)
+                if (parsed.entities.amount !== undefined) {
+                    accumulatedEntities.amount = parsed.entities.amount;
+                }
+                if (parsed.entities.token) {
+                    accumulatedEntities.token = parsed.entities.token;
+                }
+                if (parsed.entities.toAddress) {
+                    accumulatedEntities.toAddress = parsed.entities.toAddress;
+                }
+                if (parsed.entities.chainId) {
+                    accumulatedEntities.chainId = parsed.entities.chainId;
+                    accumulatedEntities.chainName = parsed.entities.chainName;
+                }
+            }
+
+            return accumulatedEntities;
+        };
+
         const parsedIntent = parseIntent(lastMessage.content);
+        const accumulatedEntities = extractEntitiesFromHistory(body.messages);
+
+        // Merge: use accumulated entities, but last message intent takes priority
+        const finalIntent: ParsedIntent = {
+            intent: parsedIntent.intent,
+            confidence: parsedIntent.confidence,
+            entities: {
+                ...accumulatedEntities,
+                // Last message can override accumulated entities
+                amount: parsedIntent.entities.amount ?? accumulatedEntities.amount,
+                token: parsedIntent.entities.token ?? accumulatedEntities.token,
+                toAddress: parsedIntent.entities.toAddress ?? accumulatedEntities.toAddress,
+                chainId: parsedIntent.entities.chainId ?? accumulatedEntities.chainId,
+                chainName: parsedIntent.entities.chainName ?? accumulatedEntities.chainName,
+            },
+        };
+
         const resolvedChainId =
             body.walletContext?.chainId ??
-            parsedIntent.entities.chainId ??
+            finalIntent.entities.chainId ??
             4202; // default Lisk Sepolia
 
+        // Check for SEND intent in any message (not just last)
+        const hasSendIntent = body.messages.some(msg => {
+            const intent = parseIntent(msg.content);
+            return intent.intent === "SEND";
+        }) || finalIntent.intent === "SEND";
+
         if (
-            parsedIntent.intent === "GET_BALANCE" &&
+            finalIntent.intent === "GET_BALANCE" &&
             (!body.walletContext?.isConnected || !body.walletContext.address)
         ) {
             return NextResponse.json({
                 message:
                     "Hubungkan wallet kamu dulu supaya aku bisa cek saldo di Lisk Sepolia.",
-                intent: parsedIntent,
+                intent: finalIntent,
             });
         }
 
-        if (parsedIntent.intent === "SEND") {
+        // Handle SEND intent with accumulated entities from conversation history
+        if (hasSendIntent) {
             if (!body.walletContext?.isConnected || !body.walletContext.address) {
                 return NextResponse.json({
                     message:
                         "Hubungkan wallet kamu dulu sebelum mengirim token.",
-                    intent: parsedIntent,
+                    intent: finalIntent,
                 });
             }
 
-            const amount = parsedIntent.entities.amount;
-            const toAddress = parsedIntent.entities.toAddress;
+            const amount = finalIntent.entities.amount;
+            const toAddress = finalIntent.entities.toAddress;
 
             if (!amount) {
                 return NextResponse.json({
                     message:
-                        "Aku perlu tahu jumlah yang ingin kamu kirim. Sebutkan jumlahnya, misalnya \"kirim 0.1 ETH\".",
-                    intent: parsedIntent,
+                        "Aku perlu tahu jumlah yang ingin kamu kirim. Sebutkan jumlahnya, misalnya \"kirim 0.1 ETH\" atau \"0.1 LSK\".",
+                    intent: finalIntent,
                 });
             }
 
@@ -281,7 +340,7 @@ export async function POST(request: Request) {
                 return NextResponse.json({
                     message:
                         "Aku belum tahu alamat tujuan. Mohon berikan alamat wallet penerima (format 0x...).",
-                    intent: parsedIntent,
+                    intent: finalIntent,
                 });
             }
 
@@ -296,7 +355,7 @@ export async function POST(request: Request) {
 
             return NextResponse.json({
                 message,
-                intent: parsedIntent,
+                intent: finalIntent,
                 transactionPreview: preview,
             });
         }
@@ -338,9 +397,19 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
         }
 
         contextMessage += `\n\nIntent Parser:
-- Intent: ${parsedIntent.intent}
-- Confidence: ${parsedIntent.confidence}
-- Chain target: ${resolvedChainId}`;
+- Intent: ${finalIntent.intent}
+- Confidence: ${finalIntent.confidence}
+- Chain target: ${resolvedChainId}
+- Accumulated entities dari conversation history:
+  * Amount: ${finalIntent.entities.amount ?? "belum diketahui"}
+  * Token: ${finalIntent.entities.token ?? "belum diketahui"}
+  * To Address: ${finalIntent.entities.toAddress ?? "belum diketahui"}
+  * Chain: ${finalIntent.entities.chainName ?? "belum diketahui"}
+
+PENTING untuk Multi-turn Conversation:
+- Jika user memberikan informasi transfer secara bertahap (misalnya: jumlah di message pertama, alamat di message kedua), kamu harus mengingat informasi dari conversation sebelumnya.
+- Ketika semua informasi sudah lengkap (amount + toAddress), sistem akan otomatis memproses transaksi.
+- Jika informasi belum lengkap, minta user untuk melengkapi informasi yang kurang.`;
 
         // Start chat dengan history
         const chat = model.startChat({
@@ -492,7 +561,7 @@ Jika user bertanya tentang saldo, ingatkan mereka untuk connect wallet terlebih 
 
         return NextResponse.json({
             message: text,
-            intent: parsedIntent,
+            intent: finalIntent,
         });
     } catch (error) {
         console.error("[ai/chat] error", error);
