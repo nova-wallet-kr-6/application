@@ -24,6 +24,7 @@
     "qrcode.react": "^4.2.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-markdown": "^10.1.0",
     "viem": "^2.39.3",
     "wagmi": "^2.19.5",
     "winston": "^3.18.3"

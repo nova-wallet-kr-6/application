@@ -856,3 +856,5 @@
 {"bestVenue":"okx","level":"info","message":"Slippage: Predictions received","quotesCount":3,"service":"crypto-payment-service","timestamp":"2025-11-30 00:59:03"}
 {"amount":50,"level":"info","message":"Slippage: Fetching predictions","service":"crypto-payment-service","side":"buy","symbol":"BTC/USDT","timestamp":"2025-11-30 01:03:32"}
 {"bestVenue":"okx","level":"info","message":"Slippage: Predictions received","quotesCount":3,"service":"crypto-payment-service","timestamp":"2025-11-30 01:03:36"}
+{"amount":50,"level":"info","message":"Slippage: Fetching predictions","service":"crypto-payment-service","side":"buy","symbol":"BTC/USDT","timestamp":"2025-11-30 01:13:27"}
+{"bestVenue":"kraken","level":"info","message":"Slippage: Predictions received","quotesCount":3,"service":"crypto-payment-service","timestamp":"2025-11-30 01:13:31"}

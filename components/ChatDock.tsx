@@ -5,6 +5,7 @@ import { MessageCircle, SendHorizonal, X } from "lucide-react";
 import { parseEther } from "viem";
 import { useSendTransaction } from "wagmi";
 import { useWallet } from "@/contexts/WalletContext";
+import ReactMarkdown from "react-markdown";
 import {
     TransactionConfirmModal,
     TransactionPreviewData,
@@ -241,12 +242,31 @@ export const ChatDock = () => {
                                 {formatTimestamp(message.timestamp)}
                             </div>
                             <div
-                                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words ${message.role === "user"
+                                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed break-words ${message.role === "user"
                                     ? "bg-indigo-500/20 text-indigo-100"
                                     : "bg-white/5 text-slate-100"
                                     }`}
                             >
-                                {message.content}
+                                {message.role === "assistant" ? (
+                                    <ReactMarkdown
+                                        components={{
+                                            // Custom styling untuk better readability di dark theme
+                                            p: ({ children }) => <p className="mb-2 last:mb-0 text-slate-100 leading-relaxed">{children}</p>,
+                                            strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                                            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1 text-slate-100 ml-2">{children}</ul>,
+                                            li: ({ children }) => <li className="ml-1">{children}</li>,
+                                            h1: ({ children }) => <h1 className="text-lg font-semibold mb-2 mt-3 text-white first:mt-0">{children}</h1>,
+                                            h2: ({ children }) => <h2 className="text-base font-semibold mb-2 mt-3 text-white first:mt-0">{children}</h2>,
+                                            h3: ({ children }) => <h3 className="text-sm font-semibold mb-1 mt-2 text-white first:mt-0">{children}</h3>,
+                                            hr: () => <hr className="border-slate-700 my-4 border-t" />,
+                                            code: ({ children }) => <code className="text-indigo-300 bg-slate-800/50 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>,
+                                        }}
+                                    >
+                                        {message.content}
+                                    </ReactMarkdown>
+                                ) : (
+                                    <span className="whitespace-pre-wrap">{message.content}</span>
+                                )}
                             </div>
                         </div>
                     ))}
