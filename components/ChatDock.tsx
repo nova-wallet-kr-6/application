@@ -355,10 +355,20 @@ export const ChatDock = () => {
 
             <button
                 onClick={() => setIsOpen((prev) => !prev)}
-                className="fixed bottom-6 right-6 z-40 rounded-full bg-indigo-500 p-4 text-white shadow-[0_20px_70px_rgba(2,6,23,0.65)] transition hover:bg-indigo-400"
+                className="group fixed bottom-6 right-6 z-40 
+                    rounded-full bg-indigo-500 p-4 text-white 
+                    shadow-[0_20px_70px_rgba(99,102,241,0.4)] 
+                    transition-all duration-300 ease-out
+                    hover:bg-indigo-400 
+                    hover:scale-110 
+                    hover:shadow-[0_25px_90px_rgba(99,102,241,0.7)]
+                    active:scale-95
+                    animate-pulse-slow
+                    hover:animate-none
+                    cursor-pointer"
                 aria-label="Buka chat Nova AI"
             >
-                <MessageCircle className="h-6 w-6" />
+                <MessageCircle className="h-6 w-6 transition-transform duration-300 group-hover:rotate-12" />
             </button>
 
             <TransactionConfirmModal
